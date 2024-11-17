@@ -1,15 +1,21 @@
+# system imports
 import datetime
 from pathlib import Path
 from typing import List, Optional
 
+# bytewax import
 from bytewax.dataflow import Dataflow
 from bytewax.testing import TestingSource
 from bytewax import operators as op
+from bytewax.testing import run_main
 
+# qdrant imports
 from qdrant_client import QdrantClient
 
+# pydantic imports
 from pydantic import TypeAdapter
 
+# local imports
 from pipeline import mocked
 from pipeline.embeddings import EmbeddingModelSingleton
 from pipeline.models import NewsArticle, Document
@@ -76,3 +82,6 @@ _ = op.inspect("inspect_embeddings", compute_embeddings)
 
 # Sink the output to Qdrant Vector DB
 output = op.output("output", compute_embeddings, build_output(model)) 
+
+if __name__ == "__main__":
+    run_main(flow)
