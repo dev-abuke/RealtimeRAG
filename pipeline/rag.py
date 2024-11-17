@@ -225,3 +225,68 @@ class RAGPipeline:
         except Exception as e:
             logger.error(f"Error in RAG pipeline: {str(e)}")
             raise
+    def query_by_filters(
+            self,
+            question: str,
+            symbols: Optional[List[str]] = None,
+            date_from: Optional[datetime] = None,
+            date_to: Optional[datetime] = None,
+            analysis_mode: bool = False,
+            limit: int = 3
+        ) -> RAGResponse:
+            """
+            Query with filters.
+            
+            Args:
+                question: User question
+                symbols: List of stock symbols to filter
+                date_from: Start date filter
+                date_to: End date filter
+                analysis_mode: Whether to use market analysis prompt
+                limit: Number of sources to retrieve
+                
+            Returns:
+                RAGResponse with filtered results
+            """
+            try:
+                retrieved_results = self.retriever.search_by_filters(
+                    query=question,
+                    symbols=symbols,
+                    date_from=date_from,
+                    date_to=date_to,
+                    limit=limit,
+                    return_all=True,
+                    return_scores=True
+                )
+
+                logger.info(f"Retrieved {len(retrieved_results.articles)} articles")
+                
+                current_prompt = self.market_analysis_prompt if analysis_mode else self.qa_prompt
+                
+                context = self._format_context(retrieved_results.articles)
+                answer = current_prompt.format(
+                    context=context,
+                    question=question
+                )
+                answer = self.llm.invoke(answer).content
+                sources = [{
+                    "headline": getattr(article, 'headline', 'N/A'),
+                    "url": getattr(article, 'url', 'N/A'),
+                    "created_at": getattr(article, 'created_at', 'N/A'),
+                    "symbols": getattr(article, 'symbol', []),
+                    "author": getattr(article, 'author', 'N/A'),
+                    "content": article.text,
+                    "rerank_score": getattr(article, 'rerank_score', None),
+                    "original_score": article.score
+                } for article in retrieved_results.articles]
+                
+                return RAGResponse(
+                    answer=answer,
+                    sources=sources,
+                    rerank_scores=[getattr(a, 'rerank_score', None) for a in retrieved_results.articles],
+                    query=question
+                )
+                
+            except Exception as e:
+                logger.error(f"Error in filtered RAG pipeline: {str(e)}")
+                raise
