@@ -10,9 +10,9 @@ from unstructured.cleaners.core import (
 )
 from unstructured.partition.html import partition_html
 from unstructured.staging.huggingface import chunk_by_attention_window
-
-from embeddings import EmbeddingModelSingleton
 from loguru import logger
+
+from pipeline.embeddings import EmbeddingModelSingleton
 
 # logger.add(sys.stderr, format="{time} {level} {message} {line}", filter="sec_filing", level="INFO")
 

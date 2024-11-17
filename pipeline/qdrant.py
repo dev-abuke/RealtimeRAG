@@ -7,8 +7,8 @@ from qdrant_client.http.api_client import UnexpectedResponse
 from qdrant_client.http.models import Distance, VectorParams
 from qdrant_client.models import PointStruct
 
-import constants
-from models import Document
+from pipeline import constants
+from pipeline.models import Document
 
 
 class QdrantVectorOutput(DynamicSink):
