@@ -1,4 +1,4 @@
-import hashlib, sys
+import hashlib
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
 
@@ -35,7 +35,7 @@ class EmbeddedChunkedArticle(BaseModel):
 
     @classmethod
     def from_retrieved_point(cls, point: Union[ScoredPoint, Record]) -> "EmbeddedChunkedArticle":
-        logger.info(f"The type of point.payload['article_id']: {type(point.payload['article_id'])}")
+        logger.info(f"The type of point.payload['article_id']: {point.payload['article_id']}")
         return cls(
             article_id=point.payload["article_id"],
             symbol=point.payload["symbols"],
@@ -52,7 +52,7 @@ class EmbeddedChunkedArticle(BaseModel):
         )
     
     def __str__(self) -> str:
-        return f"EmbeddedChunkedPost(post_id={self.article_id}, chunk_id={self.chunk_id}, has_image={bool(False)}, text_embedding_length={len(self.text_embedding)})"
+        return f"EmbeddedChunkedPost(post_id={self.article_id}, chunk_id={self.chunk_id}, text_embedding_length={len(self.text_embedding)})"
 
     def __hash__(self) -> int:
         return hash(self.chunk_id)
