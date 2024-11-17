@@ -1,5 +1,5 @@
-import os
 from typing import Optional
+from loguru import logger
 
 from bytewax.outputs import DynamicSink, StatelessSinkPartition
 from qdrant_client import QdrantClient
@@ -84,7 +84,7 @@ def build_qdrant_client(url: Optional[str] = None, api_key: Optional[str] = None
     if url is None:
         try:
             # TODO: use environment variable
-            url = 'https://73bdd42b-86a7-49fc-bcf4-e6bf85cfca17.us-east4-0.gcp.cloud.qdrant.io:6333' # os.environ["QDRANT_URL"]
+            url = constants.QDRANT_URL # os.environ["QDRANT_URL"]
         except KeyError:
             raise KeyError(
                 "QDRANT_URL must be set as environment variable or manually passed as an argument."
@@ -93,7 +93,7 @@ def build_qdrant_client(url: Optional[str] = None, api_key: Optional[str] = None
     if api_key is None:
         try:
             # TODO: use environment variable
-            api_key = 'pG-09pBVQTDpHkLVL3b3m_A_nEZLGYg88ew8_wFb5BtkasvGpyHOlQ' # os.environ["QDRANT_API_KEY"]
+            api_key = constants.QDRANT_API_KEY # os.environ["QDRANT_API_KEY"]
         except KeyError:
             raise KeyError(
                 "QDRANT_API_KEY must be set as environment variable or manually passed as an argument."
@@ -126,9 +126,8 @@ class QdrantVectorSink(StatelessSinkPartition):
         self._collection_name = collection_name
 
     def write_batch(self, document: list[Document]):
-        print(f"Writing {len(document)} embeddings to Qdrant...")
+        logger.info(f"Writing {len(document)} embeddings to Qdrant...")
         ids, payloads = document[0].to_payloads()
-        print(f"The Payloads in Qdrant &&&######### : {payloads}")
         points = [
             PointStruct(id=idx, vector=vector, payload=_payload)
             for idx, vector, _payload in zip(ids, document[0].embeddings, payloads)
