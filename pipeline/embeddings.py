@@ -6,8 +6,8 @@ from typing import Optional, Union
 import numpy as np
 from transformers import AutoModel, AutoTokenizer
 
-import constants
-from base import SingletonMeta
+from pipeline import constants
+from pipeline.base import SingletonMeta
 
 logger = logging.getLogger(__name__)
 
