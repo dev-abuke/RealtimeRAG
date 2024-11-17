@@ -33,6 +33,16 @@ def build_input(is_input_mocked: bool = True,):
         return TestingSource(mocked.financial_news)
     
 def build_output(model: EmbeddingModelSingleton, in_memory: bool = False):
+    """
+    Constructs a QdrantVectorOutput object configured for in-memory or cloud storage.
+
+    Args:
+        model (EmbeddingModelSingleton): The embedding model providing the vector size.
+        in_memory (bool): If True, configures the output to use an in-memory Qdrant client.
+
+    Returns:
+        QdrantVectorOutput: An output object configured for use with Qdrant, either in-memory or persistent.
+    """
     if in_memory:
         return QdrantVectorOutput(
             vector_size=model.max_input_length,
@@ -47,5 +57,9 @@ flow = Dataflow("alpaca_news_input")
 
 alpaca_news_input = op.input("input", flow, build_input())
 
+
 article_to_class = op.flat_map("class_to_article", alpaca_news_input, lambda messages: article_adapter.validate_python(messages))
 _ = op.inspect("articles", article_to_class)
+
+document = op.map("document", article_to_class, lambda article: article.to_document())
+_ = op.inspect("inspect_document", document)
