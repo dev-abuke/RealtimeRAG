@@ -21,8 +21,8 @@ from pipeline import mocked
 from pipeline.embeddings import EmbeddingModelSingleton
 from pipeline.models import NewsArticle, Document
 from pipeline.qdrant import QdrantVectorOutput
-
-article_adapter = TypeAdapter(List[NewsArticle])
+from pipeline.sources.batch import AlpacaNewsBatchInput
+from pipeline.sources.stream import AlpacaNewsStreamInput
 
 class IngestionTypes(Enum):
     STREAM = "stream"
@@ -44,12 +44,19 @@ def build_input(
         TestingSource: The input source for the dataflow, which is a mocked financial news feed if `is_input_mocked` is True.
     """
     if ingesion_type == IngestionTypes.MOCK:
+
         return TestingSource(mocked.financial_news)
     
     elif ingesion_type == IngestionTypes.BATCH:
-         return AlpacaNewsBatchInput(from_datetime=from_datetime, to_datetime=to_datetime, tickers=["*"])
+
+        assert (
+            from_datetime is not None and to_datetime is not None
+        ), "from_datetime and to_datetime must be provided when is_batch is True"
+        
+        return AlpacaNewsBatchInput(from_datetime=from_datetime, to_datetime=to_datetime)
 
     elif ingesion_type == IngestionTypes.STREAM:
+
         return AlpacaNewsStreamInput(tickers=["*"])
 
     else:
@@ -75,12 +82,43 @@ def build_output(model: EmbeddingModelSingleton, in_memory: bool = False):
         return QdrantVectorOutput(
             vector_size=model.max_input_length,
         )
+    
+def validate_and_parse_messages(messages):
+    """
+    Safely validate and parse messages to NewsArticle objects.
+    
+    Args:
+        messages: Raw messages from the input source
+        
+    Returns:
+        List of validated NewsArticle objects
+    """
+    try:
+        # Handle single message case
+        if not isinstance(messages, list):
+            messages = [messages]
+            
+        # Create TypeAdapter outside the lambda
+        article_adapter = TypeAdapter(List[NewsArticle])
+        
+        # Validate and parse
+        validated_articles = article_adapter.validate_python(messages)
+        logger.info(f"Successfully validated {len(validated_articles)} articles")
+        return validated_articles
+    
+    except Exception as e:
+        logger.error(f"Error validating messages: {str(e)}")
+        logger.debug(f"Problematic messages: {messages}")
+        return []
+
 
 def build_dataflow(
         ingestion_type: IngestionTypes = IngestionTypes.MOCK, 
         from_datetime: Optional[datetime.datetime] = None, 
         to_datetime: Optional[datetime.datetime] = None
-):
+    ):
+    
+    article_adapter = TypeAdapter(List[NewsArticle])
 
     model = EmbeddingModelSingleton(cache_dir=None)
 
@@ -91,7 +129,7 @@ def build_dataflow(
     # _ = op.inspect("inspect_input", alpaca_news_input)
 
     # convert each of the out output from alpaca_news_input to apydantic NewsArticle model
-    article_to_class = op.flat_map("class_to_article", alpaca_news_input, lambda messages: article_adapter.validate_python(messages))
+    article_to_class = op.flat_map("class_to_article", alpaca_news_input, validate_and_parse_messages)
     # _ = op.inspect("articles", article_to_class)
 
     # convert each of the out output from article_to_class to apydantic Document model
@@ -127,6 +165,14 @@ def build_batch_dataflow(last_n_days: int = 1):
         to_datetime=to_datetime,
     )
 
+    return flow
+
+def build_stream_dataflow():
+    flow = build_dataflow(ingestion_type=IngestionTypes.STREAM)
+    return flow
+
+def build_mock_dataflow():
+    flow = build_dataflow()
     return flow
 
 
