@@ -16,3 +16,6 @@ from bytewax import operators as op
 
 model = EmbeddingModelSingleton(cache_dir=None)
 
+def build_input(is_input_mocked: bool = True,):
+    if is_input_mocked:
+        return TestingSource(mocked.financial_news)
