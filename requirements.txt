@@ -25,3 +25,7 @@ unstructured
 unstructured-client
 websocket-client         
 websockets   
+sentence-transformers
+umap-learn
+ipykernel
+matplotlib
