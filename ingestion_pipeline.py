@@ -55,11 +55,17 @@ def build_output(model: EmbeddingModelSingleton, in_memory: bool = False):
 
 flow = Dataflow("alpaca_news_input")
 
+# initialize bytewax flow with Mock Input for Now
 alpaca_news_input = op.input("input", flow, build_input())
 
-
+# convert each of the out output from alpaca_news_input to apydantic NewsArticle model
 article_to_class = op.flat_map("class_to_article", alpaca_news_input, lambda messages: article_adapter.validate_python(messages))
 _ = op.inspect("articles", article_to_class)
 
+# convert each of the out output from article_to_class to apydantic Document model
 document = op.map("document", article_to_class, lambda article: article.to_document())
 _ = op.inspect("inspect_document", document)
+
+# compute chunks from the documents
+compute_chunks = op.map("chunks", document, lambda document: document.compute_chunks(model))
+_ = op.inspect("inspect_chunks", compute_chunks)
