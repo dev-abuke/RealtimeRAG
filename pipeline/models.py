@@ -20,8 +20,12 @@ from pipeline.utils import unbold_text, unitalic_text, replace_urls_with_placeho
 
 class EmbeddedChunkedArticle(BaseModel):
     article_id: Union[int, str]
+    symbol: Optional[List[str]]
+    url: Optional[str]
+    author: Optional[str]
     headline: Optional[str]
     created_at: Optional[datetime]
+    updated_at: Optional[datetime]
     chunk_id: str
     full_raw_text: str
     text: str
@@ -34,6 +38,10 @@ class EmbeddedChunkedArticle(BaseModel):
         logger.info(f"The type of point.payload['article_id']: {type(point.payload['article_id'])}")
         return cls(
             article_id=point.payload["article_id"],
+            symbol=point.payload["symbols"],
+            url=point.payload["url"],
+            author=point.payload["author"],
+            updated_at=point.payload["updated_at"],
             headline=point.payload["headline"],
             created_at=point.payload["created_at"],
             chunk_id=point.id,
