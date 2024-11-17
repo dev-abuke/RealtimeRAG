@@ -125,15 +125,35 @@ class QdrantVectorSink(StatelessSinkPartition):
         self._client = client
         self._collection_name = collection_name
 
-    def write_batch(self, document: list[Document]):
-        logger.info(f"Writing {len(document)} embeddings to Qdrant...")
-        ids, payloads = document[0].to_payloads()
-        points = [
-            PointStruct(id=idx, vector=vector, payload=_payload)
-            for idx, vector, _payload in zip(ids, document[0].embeddings, payloads)
-        ]
+    def dump_documents(self, documents, filename="documents.json"):
+        import json
+        """
+        Simple function to dump documents to a JSON file.
+        """
+        data = [vars(doc) for doc in documents]  # Convert each document to a dict
+        
+        with open(filename, 'w') as f:
+            json.dump(data, f, indent=2, default=str)
+        
+        return filename
 
-        self._client.upsert(collection_name=self._collection_name, points=points)
+    def write_batch(self, documents: list[Document]):
+
+        self.dump_documents(documents)
+
+        logger.info(f"Writing {len(documents)} embeddings to Qdrant...")
+
+        for document in documents:
+            ids, payloads = document.to_payloads()
+
+            points = [
+                PointStruct(id=idx, vector=vector, payload=_payload)
+                for idx, vector, _payload in zip(ids, document.embeddings, payloads)
+            ]
+
+            logger.info(f"Writing {len(points)} embeddings to Qdrant to collection {self._collection_name}")
+
+            self._client.upsert(collection_name=self._collection_name, points=points)
 
 class QdrantClientSingleton(metaclass=SingletonMeta):
     """
