@@ -1,6 +1,6 @@
 import hashlib, sys
 from datetime import datetime
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from pydantic import BaseModel
 from unstructured.cleaners.core import (
@@ -10,12 +10,40 @@ from unstructured.cleaners.core import (
 )
 from unstructured.partition.html import partition_html
 from unstructured.staging.huggingface import chunk_by_attention_window
+from qdrant_client.models import ScoredPoint, Record
 from loguru import logger
 
 from pipeline.embeddings import EmbeddingModelSingleton
+from pipeline.utils import unbold_text, unitalic_text, replace_urls_with_placeholder, remove_emojis_and_symbols
 
 # logger.add(sys.stderr, format="{time} {level} {message} {line}", filter="sec_filing", level="INFO")
 
+class EmbeddedChunkedArticle(BaseModel):
+    article_id: Union[int, str]
+    chunk_id: str
+    full_raw_text: str
+    text: str
+    text_embedding: list
+    score: Optional[float] = None
+    rerank_score: Optional[float] = None
+
+    @classmethod
+    def from_retrieved_point(cls, point: Union[ScoredPoint, Record]) -> "EmbeddedChunkedArticle":
+        logger.info(f"The type of point.payload['article_id']: {type(point.payload['article_id'])}")
+        return cls(
+            article_id=point.payload["article_id"],
+            chunk_id=point.id,
+            full_raw_text=point.payload["full_raw_text"],
+            text=point.payload["text"],
+            text_embedding=point.vector,
+            score=point.score if hasattr(point, "score") else None
+        )
+    
+    def __str__(self) -> str:
+        return f"EmbeddedChunkedPost(post_id={self.article_id}, chunk_id={self.chunk_id}, has_image={bool(False)}, text_embedding_length={len(self.text_embedding)})"
+
+    def __hash__(self) -> int:
+        return hash(self.chunk_id)
 
 class NewsArticle(BaseModel):
     """
@@ -45,6 +73,37 @@ class NewsArticle(BaseModel):
     symbols: List[str]
     source: str
 
+    @staticmethod
+    def clean_all(text: str) -> str:
+        cleaned_text = unbold_text(text)
+        article_elements = partition_html(text=cleaned_text)
+        print(f"Number of article elements: {len(article_elements)}")
+        joined_article = " ".join([str(x) for x in article_elements])
+        cleaned_text = unitalic_text(joined_article)
+        cleaned_text = remove_emojis_and_symbols(cleaned_text)
+        cleaned_text = clean(cleaned_text)
+        cleaned_text = replace_unicode_quotes(cleaned_text)
+        cleaned_text = clean_non_ascii_chars(cleaned_text)
+        cleaned_text = replace_urls_with_placeholder(cleaned_text)
+        
+        return cleaned_text
+
+    @staticmethod
+    def compute_chunks(text: str, model: EmbeddingModelSingleton = EmbeddingModelSingleton()) -> List[str]:
+        """
+        Computes the chunks of the document.
+
+        Args:
+            model (EmbeddingModelSingleton): The embedding model to use for computing the chunks.
+
+        Returns:
+            Document: The document object with the computed chunks.
+        """
+
+        chunked_item = chunk_by_attention_window(text, model.tokenizer, max_input_size=model.max_input_length)
+
+        return chunked_item
+    
     def to_document(self) -> "Document":
         """
         Converts the news article to a Document object.
@@ -58,30 +117,24 @@ class NewsArticle(BaseModel):
 
         document = Document(id=document_id)
 
-        article_elements = partition_html(text=self.content)
-        logger.info(f"Number of article elements: {len(article_elements)}")
+        cleaned_content = self.clean_all(self.content)
 
-        cleaned_content = clean_non_ascii_chars(
-            replace_unicode_quotes(clean(" ".join([str(x) for x in article_elements])))
-        )
-        logger.info(f"Cleaned content: {cleaned_content}")
+        cleaned_headline = self.clean_all(self.headline)
 
-        cleaned_headline = clean_non_ascii_chars(
-            replace_unicode_quotes(clean(self.headline))
-        )
-        logger.info(f"Cleaned headline: {cleaned_headline}")
-
-        cleaned_summary = clean_non_ascii_chars(
-            replace_unicode_quotes(clean(self.summary))
-        )
+        cleaned_summary = self.clean_all(self.summary)
 
         document.text = [cleaned_headline, cleaned_summary, cleaned_content]
+
         document.metadata["headline"] = cleaned_headline
         document.metadata["summary"] = cleaned_summary
         document.metadata["url"] = self.url
         document.metadata["symbols"] = self.symbols
         document.metadata["author"] = self.author
         document.metadata["created_at"] = self.created_at
+        document.metadata["updated_at"] = self.updated_at
+        document.metadata["source"] = self.source
+        document.metadata["full_raw_text"] = self.content
+        document.metadata["article_id"] = self.id
 
         return document
 
