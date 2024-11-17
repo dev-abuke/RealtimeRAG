@@ -3,6 +3,8 @@ from typing import Optional, Union, List, Dict, Set
 from qdrant_client.http import models
 from qdrant_client import QdrantClient
 from loguru import logger
+from datetime import datetime
+
 from pipeline import constants
 from pipeline.embeddings import EmbeddingModelSingleton, CrossEncoderModelSingleton
 from pipeline.models import NewsArticle, EmbeddedChunkedArticle
@@ -43,7 +45,8 @@ class SearchRequestBuilder:
         embedded_queries: List[List[float]],
         limit: int,
         include_payload: bool = True,
-        include_vector: bool = True
+        include_vector: bool = True,
+        filter_conditions: Optional[models.Filter] = None
     ) -> List[models.SearchRequest]:
         """
         Build search requests for each embedded query.
@@ -57,15 +60,18 @@ class SearchRequestBuilder:
         Returns:
             List of SearchRequest objects
         """
-        return [
+        search_requests = [
             models.SearchRequest(
-                vector=embedding,
+                vector=embedded_query,
                 limit=limit,
                 with_payload=include_payload,
-                with_vector=include_vector
+                with_vector=include_vector,
+                filter=filter_conditions  # Apply filters here
             )
-            for embedding in embedded_queries
+            for embedded_query in embedded_queries
         ]
+
+        return search_requests
 
 class ArticleProcessor:
     """Processes and ranks retrieved articles."""
@@ -163,7 +169,8 @@ class VectorDBRetriever:
         self,
         query: str,
         limit: int = 3,
-        return_all: bool = False
+        return_all: bool = False,
+        filter_conditions: Optional[models.Filter] = None
     ) -> Union[List[EmbeddedChunkedArticle], SearchResult]:
         """
         Search for articles matching the query.
@@ -172,6 +179,7 @@ class VectorDBRetriever:
             query: Search query string
             limit: Number of results to return
             return_all: Whether to return additional search metadata
+            filter_conditions: Optional Qdrant filter conditions
             
         Returns:
             List of articles or SearchResult object with metadata
@@ -185,7 +193,8 @@ class VectorDBRetriever:
         # Build and execute search requests
         search_requests = SearchRequestBuilder.build_requests(
             embedded_queries=embedded_queries,
-            limit=search_limit
+            limit=search_limit,
+            filter_conditions=filter_conditions
         )
         
         retrieved_points = self._vector_db_client.search_batch(
@@ -212,6 +221,91 @@ class VectorDBRetriever:
             )
         
         return ranked_articles
+    def search_by_filters(
+        self,
+        query: str,
+        symbols: Optional[List[str]] = None,
+        date_from: Optional[datetime] = None,
+        date_to: Optional[datetime] = None,
+        limit: int = 3,
+        return_all: bool = False,
+        return_scores: bool = False,
+        min_score: Optional[float] = None
+    ) -> Union[List[EmbeddedChunkedArticle], SearchResult]:
+        """
+        Search with filters and optional reranking.
+        
+        Args:
+            query: Search query
+            symbols: List of stock symbols to filter
+            date_from: Start date filter
+            date_to: End date filter
+            limit: Number of results to return
+            return_all: Whether to return search metadata
+            return_scores: Whether to return scoring details
+            min_score: Minimum score threshold
+            
+        Returns:
+            Filtered and ranked articles
+        """
+        # Build filter conditions
+        must_conditions = []
+        
+        if symbols:
+            must_conditions.append(
+                models.FieldCondition(
+                    key="symbols",
+                    match=models.MatchAny(any=symbols)
+                )
+            )
+            logger.debug(f"Added symbols filter: {symbols}")
+        
+        if date_from or date_to:
+            range_condition = {}
+            if date_from:
+                range_condition["gte"] = date_from.isoformat()
+            if date_to:
+                range_condition["lte"] = date_to.isoformat()
+                
+            must_conditions.append(
+                models.FieldCondition(
+                    key="created_at",
+                    range=models.Range(**range_condition)
+                )
+            )
+            logger.debug(f"Added date range filter: {range_condition}")
+        
+        filter_conditions = models.Filter(must=must_conditions) if must_conditions else None
+        
+        try:
+            # Update search requests with filter
+            results = self.search(
+                query=query,
+                limit=limit,
+                return_all=return_all,
+                filter_conditions=filter_conditions  # Pass filters to search
+            )
+            
+            # Apply minimum score filter if specified
+            if min_score is not None and isinstance(results, list):
+                results = [
+                    article for article in results
+                    if article.score >= min_score
+                ]
+             
+            # Add scores to response if requested
+            if return_scores and isinstance(results, list):
+                for article in results:
+                    article.include_scores = True
+            
+            return results
+            
+        finally:
+            # Reset search parameters
+            logger.debug("Resetting search parameters")
+            # pass
+            # self._vector_db_client.search_kwargs = {}
+
 
 if __name__ == "__main__":
     # Initialize retriever
