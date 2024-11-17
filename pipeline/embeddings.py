@@ -5,6 +5,7 @@ from typing import Optional, Union
 
 import numpy as np
 from transformers import AutoModel, AutoTokenizer
+from sentence_transformers.cross_encoder import CrossEncoder
 
 from pipeline import constants
 from pipeline.base import SingletonMeta
@@ -122,3 +123,27 @@ class EmbeddingModelSingleton(metaclass=SingletonMeta):
             embeddings = embeddings.flatten().tolist()
 
         return embeddings
+
+class CrossEncoderModelSingleton(metaclass=SingletonMeta):
+    def __init__(
+        self,
+        model_id: str = constants.CROSS_ENCODER_MODEL_ID,
+        device: str = constants.EMBEDDING_MODEL_DEVICE,
+    ):
+        """
+        Initializes the EmbeddingModelSingleton instance.
+
+        Args:
+            model_id (str): The identifier of the pre-trained transformer model to use.
+            device (str): The device to use for running the model (e.g. "cpu", "cuda").
+        """
+
+        self._model_id = model_id
+        self._device = device
+
+        self._model = CrossEncoder(model_name=self._model_id, device=self._device)
+
+    def __call__(self, pairs: list[tuple[str, str]]) -> list[float]:
+        scores = self._model.predict(pairs)
+
+        return scores.tolist()
