@@ -115,12 +115,29 @@ class ArticleProcessor:
         """
         if self.cross_encoder_model:
             # TODO: Implement reranking
-            # articles = self.rank_articles(query, articles)
+            articles = self.rerank(query, articles)
             pass
         else:
             articles.sort(key=lambda x: x.score, reverse=True)
         
         return articles[:limit]
+    
+    def rerank(
+        self, query: str, posts: list[EmbeddedChunkedArticle]
+    ) -> list[EmbeddedChunkedArticle]:
+        pairs = [[query, f"{post.text}"] for post in posts]
+        cross_encoder_scores = self.cross_encoder_model(pairs)
+        ranked_posts = sorted(
+            zip(posts, cross_encoder_scores), key=lambda x: x[1], reverse=True
+        )
+
+        reranked_posts = []
+        for post, rerank_score in ranked_posts:
+            post.rerank_score = rerank_score
+
+            reranked_posts.append(post)
+
+        return reranked_posts
 
 class VectorDBRetriever:
     """Main retriever class for vector database search."""
