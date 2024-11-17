@@ -63,6 +63,7 @@ flow = Dataflow("alpaca_news_input")
 
 # initialize bytewax flow with Mock Input for Now
 alpaca_news_input = op.input("input", flow, build_input())
+_ = op.inspect("inspect_input", alpaca_news_input)
 
 # convert each of the out output from alpaca_news_input to apydantic NewsArticle model
 article_to_class = op.flat_map("class_to_article", alpaca_news_input, lambda messages: article_adapter.validate_python(messages))
