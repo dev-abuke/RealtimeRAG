@@ -69,3 +69,10 @@ _ = op.inspect("inspect_document", document)
 # compute chunks from the documents
 compute_chunks = op.map("chunks", document, lambda document: document.compute_chunks(model))
 _ = op.inspect("inspect_chunks", compute_chunks)
+
+# compute embeddings for each chunks
+compute_embeddings = op.map("embeddings", compute_chunks, lambda document: document.compute_embeddings(model)) 
+_ = op.inspect("inspect_embeddings", compute_embeddings)
+
+# Sink the output to Qdrant Vector DB
+output = op.output("output", compute_embeddings, build_output(model)) 
