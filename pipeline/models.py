@@ -84,12 +84,13 @@ class NewsArticle(BaseModel):
     content: str
     symbols: List[str]
     source: str
+    images: Optional[List[dict]]
 
     @staticmethod
     def clean_all(text: str) -> str:
         cleaned_text = unbold_text(text)
         article_elements = partition_html(text=cleaned_text)
-        print(f"Number of article elements: {len(article_elements)}")
+        logger.info(f"Number of article elements: {len(article_elements)}")
         joined_article = " ".join([str(x) for x in article_elements])
         cleaned_text = unitalic_text(joined_article)
         cleaned_text = remove_emojis_and_symbols(cleaned_text)
@@ -211,6 +212,8 @@ class Document(BaseModel):
             Document: The document object with the computed chunks.
         """
 
+        logger.info(f"Computing chunks for document {self.id} and headline {self.metadata['headline']}...")
+
         for item in self.text:
             chunked_item = chunk_by_attention_window(
                 item, model.tokenizer, max_input_size=model.max_input_length
@@ -230,6 +233,8 @@ class Document(BaseModel):
         Returns:
             Document: The document object with the computed embeddings.
         """
+
+        logger.info(f"Computing embeddings for document {self.id} and headline {self.metadata['headline']}...")
 
         for chunk in self.chunks:
             embedding = model(chunk, to_list=True)
