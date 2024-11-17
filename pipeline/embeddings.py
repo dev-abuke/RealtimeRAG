@@ -1,4 +1,4 @@
-import logging
+from loguru import logger
 import traceback
 from pathlib import Path
 from typing import Optional, Union
@@ -9,9 +9,6 @@ from sentence_transformers.cross_encoder import CrossEncoder
 
 from pipeline import constants
 from pipeline.base import SingletonMeta
-
-logger = logging.getLogger(__name__)
-
 
 class EmbeddingModelSingleton(metaclass=SingletonMeta):
     """
