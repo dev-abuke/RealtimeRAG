@@ -1,14 +1,16 @@
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional
 from dataclasses import dataclass
 from datetime import datetime
+from loguru import logger
+
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnablePassthrough
-from loguru import logger
 
 from pipeline.retriever import VectorDBRetriever
 from pipeline.models import NewsArticle, EmbeddedChunkedArticle
+from pipeline import constants
 
 @dataclass
 class RAGResponse:
@@ -24,8 +26,8 @@ class RAGPipeline:
     def __init__(
         self,
         retriever: VectorDBRetriever,
-        model_name: str = "gpt-4o-mini",
-        openai_api_key: str = "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",
+        model_name: str = constants.LLM_MODEL_NAME,
+        openai_api_key: str = constants.OPENAI_API_KEY,
         temperature: float = 0.7,
         streaming: bool = False
     ):
@@ -45,7 +47,7 @@ class RAGPipeline:
             openai_api_key=openai_api_key,
             temperature=temperature,
             streaming=streaming,
-            base_url="https://openrouter.ai/api/v1"
+            base_url=constants.LLM_BASE_URL
         )
         
         # Initialize prompts
