@@ -1,6 +1,7 @@
 # system imports
 import datetime
-from pathlib import Path
+from enum import Enum
+from loguru import logger
 from typing import List, Optional
 
 # bytewax import
@@ -23,9 +24,16 @@ from pipeline.qdrant import QdrantVectorOutput
 
 article_adapter = TypeAdapter(List[NewsArticle])
 
-model = EmbeddingModelSingleton(cache_dir=None)
+class IngestionTypes(Enum):
+    STREAM = "stream"
+    BATCH = "batch"
+    MOCK = "mock"
 
-def build_input(is_input_mocked: bool = True,):
+def build_input(
+        ingesion_type: IngestionTypes = IngestionTypes.MOCK,
+        from_datetime: Optional[datetime.datetime] = None, 
+        to_datetime: Optional[datetime.datetime] = None
+    ):
     """
     Builds the input source for the dataflow.
 
@@ -35,8 +43,17 @@ def build_input(is_input_mocked: bool = True,):
     Returns:
         TestingSource: The input source for the dataflow, which is a mocked financial news feed if `is_input_mocked` is True.
     """
-    if is_input_mocked:
+    if ingesion_type == IngestionTypes.MOCK:
         return TestingSource(mocked.financial_news)
+    
+    elif ingesion_type == IngestionTypes.BATCH:
+         return AlpacaNewsBatchInput(from_datetime=from_datetime, to_datetime=to_datetime, tickers=["*"])
+
+    elif ingesion_type == IngestionTypes.STREAM:
+        return AlpacaNewsStreamInput(tickers=["*"])
+
+    else:
+        raise ValueError(f"Invalid ingestion type: {ingesion_type}")
     
 def build_output(model: EmbeddingModelSingleton, in_memory: bool = False):
     """
@@ -59,30 +76,59 @@ def build_output(model: EmbeddingModelSingleton, in_memory: bool = False):
             vector_size=model.max_input_length,
         )
 
-flow = Dataflow("alpaca_news_input")
+def build_dataflow(
+        ingestion_type: IngestionTypes = IngestionTypes.MOCK, 
+        from_datetime: Optional[datetime.datetime] = None, 
+        to_datetime: Optional[datetime.datetime] = None
+):
 
-# initialize bytewax flow with Mock Input for Now
-alpaca_news_input = op.input("input", flow, build_input())
-_ = op.inspect("inspect_input", alpaca_news_input)
+    model = EmbeddingModelSingleton(cache_dir=None)
 
-# convert each of the out output from alpaca_news_input to apydantic NewsArticle model
-article_to_class = op.flat_map("class_to_article", alpaca_news_input, lambda messages: article_adapter.validate_python(messages))
-_ = op.inspect("articles", article_to_class)
+    flow = Dataflow("alpaca_news_input")
 
-# convert each of the out output from article_to_class to apydantic Document model
-document = op.map("document", article_to_class, lambda article: article.to_document())
-_ = op.inspect("inspect_document", document)
+    # initialize bytewax flow with Mock Input for Now
+    alpaca_news_input = op.input("input", flow, build_input(ingestion_type, from_datetime, to_datetime))
+    # _ = op.inspect("inspect_input", alpaca_news_input)
 
-# compute chunks from the documents
-compute_chunks = op.map("chunks", document, lambda document: document.compute_chunks(model))
-_ = op.inspect("inspect_chunks", compute_chunks)
+    # convert each of the out output from alpaca_news_input to apydantic NewsArticle model
+    article_to_class = op.flat_map("class_to_article", alpaca_news_input, lambda messages: article_adapter.validate_python(messages))
+    # _ = op.inspect("articles", article_to_class)
 
-# compute embeddings for each chunks
-compute_embeddings = op.map("embeddings", compute_chunks, lambda document: document.compute_embeddings(model)) 
-_ = op.inspect("inspect_embeddings", compute_embeddings)
+    # convert each of the out output from article_to_class to apydantic Document model
+    document = op.map("document", article_to_class, lambda article: article.to_document())
+    # _ = op.inspect("inspect_document", document)
 
-# Sink the output to Qdrant Vector DB
-output = op.output("output", compute_embeddings, build_output(model)) 
+    # compute chunks from the documents
+    compute_chunks = op.map("chunks", document, lambda document: document.compute_chunks(model))
+    # _ = op.inspect("inspect_chunks", compute_chunks)
+
+    # compute embeddings for each chunks
+    compute_embeddings = op.map("embeddings", compute_chunks, lambda document: document.compute_embeddings(model)) 
+    # _ = op.inspect("inspect_embeddings", compute_embeddings)
+
+    # Sink the output to Qdrant Vector DB
+    op.output("output", compute_embeddings, build_output(model)) 
+    # _ = op.inspect("inspect_output", output)
+
+    return flow
+
+def build_batch_dataflow(last_n_days: int = 1):
+
+    to_datetime = datetime.datetime.now()
+    from_datetime = to_datetime - datetime.timedelta(days=last_n_days)
+
+    logger.info(
+        f"Extracting news from {from_datetime} to {to_datetime} [n_days={last_n_days}]"
+    )
+
+    flow = build_dataflow(
+        ingestion_type=IngestionTypes.BATCH,
+        from_datetime=from_datetime,
+        to_datetime=to_datetime,
+    )
+
+    return flow
+
 
 if __name__ == "__main__":
-    run_main(flow)
+    run_main(build_dataflow())
