@@ -29,3 +29,4 @@ sentence-transformers
 umap-learn
 ipykernel
 matplotlib
+streamlit 
