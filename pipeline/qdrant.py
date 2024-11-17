@@ -9,7 +9,7 @@ from qdrant_client.models import PointStruct
 
 from pipeline import constants
 from pipeline.models import Document
-
+from pipeline.base import SingletonMeta
 
 class QdrantVectorOutput(DynamicSink):
     """A class representing a Qdrant vector output.
@@ -99,9 +99,12 @@ def build_qdrant_client(url: Optional[str] = None, api_key: Optional[str] = None
                 "QDRANT_API_KEY must be set as environment variable or manually passed as an argument."
             )
 
-    client = QdrantClient(url, api_key=api_key)
-
-    return client
+    client_singleton = QdrantClientSingleton(
+        url=url,
+        api_key=api_key
+    )
+    
+    return client_singleton.client
 
 
 class QdrantVectorSink(StatelessSinkPartition):
@@ -132,3 +135,54 @@ class QdrantVectorSink(StatelessSinkPartition):
         ]
 
         self._client.upsert(collection_name=self._collection_name, points=points)
+
+class QdrantClientSingleton(metaclass=SingletonMeta):
+    """
+    Singleton wrapper for QdrantClient.
+    Ensures only one instance of QdrantClient is created and reused.
+    """
+    def __init__(
+        self,
+        url: Optional[str] = None,
+        api_key: Optional[str] = None,
+        prefer_grpc: bool = False
+    ):
+        """
+        Initialize the Qdrant client singleton.
+        
+        Args:
+            url: Optional Qdrant server URL
+            api_key: Optional Qdrant API key
+            prefer_grpc: Whether to prefer gRPC over HTTP
+        """
+        self._client: Optional[QdrantClient] = None
+        self._url = url
+        self._api_key = api_key
+        self._prefer_grpc = prefer_grpc
+        self._initialize_client()
+    
+    def _initialize_client(self) -> None:
+        """Initialize the Qdrant client if not already initialized."""
+        if self._client is None:
+            if self._url is None:
+                # Use in-memory storage if no URL provided
+                self._client = QdrantClient(":memory:")
+            else:
+                # Initialize with provided configuration
+                self._client = QdrantClient(
+                    url=self._url,
+                    api_key=self._api_key,
+                    prefer_grpc=self._prefer_grpc
+                )
+    
+    @property
+    def client(self) -> QdrantClient:
+        """
+        Get the Qdrant client instance.
+        
+        Returns:
+            QdrantClient: The initialized Qdrant client
+        """
+        if self._client is None:
+            self._initialize_client()
+        return self._client
