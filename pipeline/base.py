@@ -1,4 +1,5 @@
 from threading import Lock
+from loguru import logger
 
 
 class SingletonMeta(type):
@@ -32,6 +33,7 @@ class SingletonMeta(type):
             # release may then enter this section. But since the Singleton field
             # is already initialized, the thread won't create a new object.
             if cls not in cls._instances:
+                logger.debug(f"Initial Creating instance of {cls}")
                 instance = super().__call__(*args, **kwargs)
                 cls._instances[cls] = instance
 
