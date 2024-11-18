@@ -1,312 +1,572 @@
-<div align="center">
-    <h2>Hands-on LLMs Course </h2>
-    <h1>Learn to Train and Deploy a Real-Time Financial Advisor</h1>
-    <i>by <a href="https://github.com/iusztinpaul">Paul Iusztin</a>, <a href="https://github.com/Paulescu">Pau Labarta Bajo</a> and <a href="https://github.com/Joywalker">Alexandru Razvant</a></i>
-</div>
+# Real-time Financial News RAG System
 
-## Table of Contents
+A real-time Retrieval Augmented Generation (RAG) system for financial news, featuring streaming data ingestion, vector storage, and an interactive query interface.
 
-- [1. Building Blocks](#1-building-blocks)
-    - [1.1. Training Pipeline](#11-training-pipeline)
-    - [1.2. Streaming Real-time Pipeline](#12-streaming-real-time-pipeline)
-    - [1.3. Inference Pipeline](#13-inference-pipeline)
-    - [1.4. Financial Q&A Dataset](#14-financial-qa-dataset)
-- [2. Setup External Services](#2-setup-external-services)
-    - [2.1. Alpaca](#21-alpaca)
-    - [2.2. Qdrant](#22-qdrant)
-    - [2.3. Comet ML](#23-comet-ml)
-    - [2.4. Beam](#24-beam)
-    - [2.5. AWS](#25-aws)
-- [3. Install & Usage](#3-install--usage)
-- [4. Lectures](#4-lectures)
-    - [4.1. Costs](#41-costs)
-    - [4.2. Ask Questions](#42-ask-questions)
-    - [4.3. Video lectures](#43-video-lectures)
-    - [4.4. Articles](#44-articles)
-- [5. License](#6-license)
-- [6. Contributors & Teachers](#7-contributors--teachers)
+## System Architecture
 
-------
+![alt text](screenshots/system.png)
 
+```
+┌────────────────────────────┐     ┌──────────────┐     ┌─────────────┐     ┌───────────┐
+│  News Sources              │────>│   Bytewax    │────>│   Qdrant    │────>│ LangChain │
+│ (Alpaca-Mock/Stream/Batch) │     │  Pipeline    │     │  VectorDB   │     │    RAG    │
+└────────────────────────────┘     └──────────────┘     └─────────────┘     └───────────┘
+                                                                                  │
+                                                                                  v
+                                                                          ┌───────────────┐
+                                                                          │   Streamlit   │
+                                                                          │  Interface    │
+                                                                          └───────────────┘
+```
+## Project Overview
 
-## 1. Building Blocks
+- Build a streaming pipeline that ingests Alpaca Financial News into a vector DB in realtime/near-realtime
+- Clean, chunk, and embed News Data 
+- Build a retrieval client to query News Data
+- Use a rerank pattern to improve retrieval accuracy
 
-*Using the 3-pipeline design, this is what you will learn to build within this course* ↓
+### The retrieval system is based on 2 detached components:
 
-### 1.1. Training Pipeline 
+- The streaming ingestion pipeline
+- The retrieval client
 
-Training pipeline that:
-- loads a proprietary Q&A dataset 
-- fine-tunes an open-source LLM using QLoRA
-- logs the training experiments on [Comet ML's](https://www.comet.com?utm_source=thepauls&utm_medium=partner&utm_content=github) experiment tracker & the inference results on [Comet ML's](https://www.comet.com?utm_source=thepauls&utm_medium=partner&utm_content=github) LLMOps dashboard
-- stores the best model on [Comet ML's](https://www.comet.com/site/products/llmops/?utm_source=thepauls&utm_medium=partner&utm_content=github) model registry
+The streaming ingestion pipeline could run 24/7 to keep the vector DB synced up with current News about financials in our data source, depending on which
+Data streaming is selected, in our case we have 3 types of data ingestion mechanisms
+1. Batch import using dates from and to
+2. Real time ingestion using websocket that listens to news articles being sent from alpaca
+3. Mock databases which could also be a json file that is capable of providing the same type of data
 
-The **training pipeline** is **deployed** using [Beam](https://docs.beam.cloud/getting-started/quickstart?utm_source=thepauls&utm_medium=partner&utm_content=github) as a serverless GPU infrastructure.
+The retrieval client is used in RAG applications to query the vector DB leveraging langchains easy integration. These 2 components communicate with each other only through the vector DB.
 
--> Found under the `modules/training_pipeline` directory.
+## Chosing stream engine?
 
-#### 💻 Minimum Hardware Requirements
-* CPU: 4 Cores
-* RAM: 14 GiB
-* VRAM: 10 GiB (mandatory CUDA-enabled Nvidia GPU)
+Because News data especially financial news evolve frequently, our vector DB can quickly get out of sync. To handle this, we must build a pipeline that runs every minute/second/day. 
+But to really minimize data decay and to make sure our vector DB stays current with new events, we need to use a streaming pipeline that immediately takes every new item the moment it's available, 
+preprocesses it, and loads it into the vector DB.
 
-**Note:** Do not worry if you don't have the minimum hardware requirements. We will show you how to deploy the training pipeline to [Beam's](https://docs.beam.cloud/getting-started/quickstart?utm_source=thepauls&utm_medium=partner&utm_content=github) serverless infrastructure and train the LLM there.
+### We used Bytewax as our streaming engine more can be found [Here - Official Documentation](https://docs.bytewax.io/stable/guide/getting-started/simple-example.html)
 
-### 1.2. Streaming Real-time Pipeline
+## Why Bytewax?
 
-Real-time feature pipeline that:
-- ingests financial news from [Alpaca](https://alpaca.markets/docs/api-references/market-data-api/news-data/)
-- cleans & transforms the news documents into embeddings in real-time using [Bytewax](https://github.com/bytewax/bytewax?utm_source=thepauls&utm_medium=partner&utm_content=github)
-- stores the embeddings into the [Qdrant Vector DB](https://qdrant.tech/?utm_source=thepauls&utm_medium=partner&utm_content=github)
+Bytewax is a streaming engine built in Rust that exposes a Python interface. We use Bytewax because it combines the impressive speed and reliability of Rust with the ease of use and ecosystem of Python
+and learning curve is also small, as we needed to optimize for the time we have to prototype. Other streaming engines were also considered such as Kafka, which could be prototyped and integrated later on. On that note, Bytewax also streams events to kafka, we can leverage that and create more robust framework for our pipeline.
 
-The **streaming pipeline** is **automatically deployed** on an AWS EC2 machine using a CI/CD pipeline built in GitHub actions.
+## The retrieval client
+Our retrieval client is a Qdrant standard Python module that preprocesses user queries and searches the vector DB for most similar results. 
+Qdrant vector DB lets us decouple the retrieval client from the streaming ingestion pipeline.
 
--> Found under the `modules/streaming_pipeline` directory.
+## Data
+We have ingested more than 60 news from alpaca to Qdrant Vector Db. the schema looks like this
+![alt text](screenshots/schema.png)
 
-#### 💻 Minimum Hardware Requirements
-* CPU: 1 Core
-* RAM: 2 GiB
-* VRAM: -
+### Qdrant cloud data used for this prototype can be found [here](https://73bdd42b-86a7-49fc-bcf4-e6bf85cfca17.us-east4-0.gcp.cloud.qdrant.io:6333/dashboard#/collections/alpaca_financial_news) 
 
-### 1.3. Inference Pipeline
+Use the below API Key to browse the data and visualize
 
-Inference pipeline that uses [LangChain](https://github.com/langchain-ai/langchain) to create a chain that:
-* downloads the fine-tuned model from [Comet's](https://www.comet.com?utm_source=thepauls&utm_medium=partner&utm_content=github) model registry
-* takes user questions as input
-* queries the [Qdrant Vector DB](https://qdrant.tech/?utm_source=thepauls&utm_medium=partner&utm_content=github) and enhances the prompt with related financial news
-* calls the fine-tuned LLM for financial advice using the initial query, the context from the vector DB, and the chat history
-* persists the chat history into memory 
-* logs the prompt & answer into [Comet ML's](https://www.comet.com/site/products/llmops/?utm_source=thepauls&utm_medium=partner&utm_content=github) LLMOps monitoring feature
+```python
+QDRANT_API_KEY = 'pG-09pBVQTDpHkLVL3b3m_A_nEZLGYg88ew8_wFb5BtkasvGpyHOlQ'
+```
 
-The **inference pipeline** is **deployed** using [Beam](https://docs.beam.cloud/deployment/rest-api?utm_source=thepauls&utm_medium=partner&utm_content=github) as a serverless GPU infrastructure, as a RESTful API. Also, it is wrapped under a UI for demo purposes, implemented in [Gradio](https://www.gradio.app/).
+## Or in Qdrant Cloud it looks like this
+![alt text](screenshots/qdrant.png)
 
--> Found under the `modules/financial_bot` directory.
+## Bytewax flow
+Bytewax enables us to define pipelines as a directed graph called flow, hence we have defined our flow as follows
 
-#### 💻 Minimum Hardware Requirements
-* CPU: 4 Cores
-* RAM: 14 GiB
-* VRAM: 8 GiB (mandatory CUDA-enabled Nvidia GPU)
+1. Validate the ingested data
+2. Clean the news data
+3. Chunk the posts using Attention Window
+4. Embed the posts
+5. Load the posts to a Qdrant vector DB
 
-**Note:** Do not worry if you don't have the minimum hardware requirements. We will show you how to deploy the inference pipeline to [Beam's](https://docs.beam.cloud/getting-started/quickstart?utm_source=thepauls&utm_medium=partner&utm_content=github) serverless infrastructure and call the LLM from there.
+# Financial News Freshness Scoring System
 
-<br/>
+## Why This Matters
 
-![architecture](media/architecture.png)
+In financial news, timing is everything. A news article about a stock price movement from yesterday could be completely irrelevant or even misleading today. Our system aims to solve this critical challenge by automatically weighing information based on its age.
 
+## How It Works
 
-#### 1.4. Financial Q&A Dataset
+Think of our scoring system like a fresh food rating:
+- Brand new content (0-4 hours): "Fresh from the oven" - 100% confidence score
+- Recent content (4-24 hours): "Still fresh but cooling down" - Gradually decreasing confidence
+- Older content (>24 hours): "Past its prime" - Minimal confidence score
 
-We used `GPT3.5` to generate a financial Q&A dataset to fine-tune our open-source LLM to specialize in using financial terms and answering financial questions. Using a large LLM, such as `GPT3.5` to generate a dataset that trains a smaller LLM (e.g., Falcon 7B) is known as **fine-tuning with distillation**. 
+### Key Features
 
-→ To understand how we generated the financial Q&A dataset, [check out this article](https://open.substack.com/pub/paulabartabajo/p/how-to-generate-financial-q-and-a?r=1ttoeh&utm_campaign=post&utm_medium=web) written by [Pau Labarta](https://github.com/Paulescu).
+1. **Time-Based Scoring**
+   - Fresh content (under 4 hours) gets maximum visibility
+   - Content gradually "fades" in importance over time
+   - Very old content (>24 hours) is marked as potentially outdated
 
-→ To see a complete analysis of the financial Q&A dataset, check out the [dataset_analysis](https://github.com/iusztinpaul/hands-on-llms/blob/main/dataset_analysis) subsection of the course written by [Alexandru Razvant](https://github.com/Joywalker).
-
-![EDA](./media/eda_prompts_dataset.png)
-
-
-## 2. Setup External Services
-
-Before diving into the modules, you have to set up a couple of additional external tools for the course.
-
-**NOTE:** You can set them up as you go for every module, as we will point you in every module what you need.
-
-### 2.1. Alpaca
-`financial news data source`
-
-Follow this [document](https://alpaca.markets/docs/market-data/getting-started/) to show you how to create a FREE account and generate the API Keys you will need within this course.
-
-**Note:** 1x Alpaca data connection is FREE.
-
-### 2.2. Qdrant
-`serverless vector DB`
-
-Go to [Qdrant](https://qdrant.tech/?utm_source=thepauls&utm_medium=partner&utm_content=github) and create a FREE account.
-
-After, follow [this document](https://qdrant.tech/documentation/cloud/authentication/?utm_source=thepauls&utm_medium=partner&utm_content=github) on how to generate the API Keys you will need within this course.
-
-**Note:** We will use only Qdrant's freemium plan. 
-
-### 2.3. Comet ML
-`serverless ML platform`
-
-Go to [Comet ML](https://www.comet.com/signup?utm_source=thepauls&utm_medium=partner&utm_content=github) and create a FREE account.
-
-After, [follow this guide](https://www.comet.com/docs/v2/guides/getting-started/quickstart/) to generate an API KEY and a new project, which you will need within the course.
-
-**Note:** We will use only Comet ML's freemium plan. 
-
-### 2.4. Beam
-`serverless GPU compute | training & inference pipelines`
-
-Go to [Beam](https://www.beam.cloud?utm_source=thepauls&utm_medium=partner&utm_content=github) and create a FREE account.
-
-After, you must follow their [installation guide](https://docs.beam.cloud/getting-started/installation?utm_source=thepauls&utm_medium=partner&utm_content=github) to install their CLI & configure it with your Beam credentials.
-
-To read more about Beam, here is an [introduction guide](https://docs.beam.cloud/getting-started/introduction?utm_source=thepauls&utm_medium=partner&utm_content=github).
-
-**Note:** You have ~10 free compute hours. Afterward, you pay only for what you use. If you have an Nvidia GPU >8 GB VRAM & don't want to deploy the training & inference pipelines, using Beam is optional. 
-
-#### Troubleshooting
-
-When using Poetry, we had issues locating the Beam CLI inside a Poetry virtual environment. To fix this, after installing Beam, we create a symlink that points to Poetry's binaries, as follows:
- ```shell
-  export COURSE_MODULE_PATH=<your-course-module-path> # e.g., modules/training_pipeline
-  cd $COURSE_MODULE_PATH
-  export POETRY_ENV_PATH=$(dirname $(dirname $(poetry run which python)))
-
-  ln -s /usr/local/bin/beam ${POETRY_ENV_PATH}/bin/beam
- ```
-
-
- ### 2.5. AWS
- `cloud compute | feature pipeline`
-
- Go to [AWS](https://aws.amazon.com/console/), create an account, and generate a pair of credentials.
-
- After, download and install their [AWS CLI v2.11.22](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html) and [configure it](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-configure.html) with your credentials.
-
- **Note:** You will pay only for what you use. You will deploy only a `t2.small` EC2 VM, which is only `~$0.023` / hour. If you don't want to deploy the feature pipeline, using AWS is optional.
-
-
-## 3. Install & Usage
-Every module has its dependencies and scripts. In a production setup, every module would have its repository, but in this use case, for learning purposes, we put everything in one place:
-
-Thus, check out the README for every module individually to see how to install & use it:
-1. [q_and_a_dataset_generator](/modules/q_and_a_dataset_generator/)
-2. [training_pipeline](/modules/training_pipeline/)
-3. [streaming_pipeline](/modules/streaming_pipeline/)
-4. [inference_pipeline](/modules/financial_bot/)
-
-## 4. Lectures
-
-We strongly encourage you to clone this repository and replicate everything we've done to get the most out of this course.
-
-In each module's video lectures, articles, and README documentation, you will find step-by-step instructions.
-
-Happy learning! 🙏
-
-### 4.1. Costs
-
-The GitHub code (released under the MIT license) and video lectures (released on YouTube) are entirely free of charge. Always will be.
-
-The Medium lessons are released under Medium's paid wall. If you already have it, then they are free. Otherwise, you must pay a $5 monthly fee to read the articles.
-
-### 4.2. Ask Questions
-
-If you have any questions or issues during the course, we encourage you to create an [issue](https://github.com/iusztinpaul/hands-on-llms/issues) in this repository where you can explain everything you need in depth. 
-
-Otherwise, you can also contact the teachers on LinkedIn:
-- [Paul Iusztin](https://www.linkedin.com/in/pauliusztin/)
-- [Pau Labarta](https://www.linkedin.com/in/pau-labarta-bajo-4432074b/)
-
-### 4.3. Video Lectures
-
-#### 4.3.1. Intro to the course
-
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=l4HTEf0_s70">
-      <p>Click here to watch the video 🎬</p>
-    <img src="media/youtube_thumbnails/00_intro.png" alt="Intro to the course" style="width:75%;">
-  </a>
-</div>
-
-
-#### 4.3.2. Fine-tuning our open-source LLM (overview)
-
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=HcxwOYMmj40">
-      <p>Click here to watch the video 🎬</p>
-    <img src="media/youtube_thumbnails/01_fine_tuning_pipeline_overview.png" alt="Intro to the course" style="width:75%;">
-  </a>
-</div>
-
-#### 4.3.3. Fine-tuning our open-source LLM (Hands-on!)
-
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=RS96R0dH0uE">
-      <p>Click here to watch the video 🎬</p>
-    <img src="media/youtube_thumbnails/02_fine_tuning_pipeline_hands_on.png" alt="Hands-on Fine Tuning an LLM" style="width:75%;">
-  </a>
-</div>
-
-#### 4.3.4. Real-time text embedding pipeline
-
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=5gX5XRZpb6E">
-      <p>Click here to watch the video 🎬</p>
-    <img src="media/youtube_thumbnails/03_real_time_embeddings.png" alt="Real-time text embedding pipeline" style="width:75%;">
-  </a>
-</div>
-
-#### 4.3.5. Inference pipeline
-
-<div align="center">
-  <a href="https://www.youtube.com/watch?v=lXLv0zNdbgE">
-      <p>Click here to watch the video 🎬</p>
-    <img src="media/youtube_thumbnails/04_inference_pipeline.png" alt="Inference pipeline" style="width:75%;">
-  </a>
-</div>
-
-
-### 4.4. Articles
-
-`To understand the entire code step-by-step, check out our articles` ↓
-
-### System design
-- [Lesson 1: The LLMs Kit: Build a Production-Ready Real-Time Financial Advisor System Using Streaming Pipelines, RAG, and LLMOps](https://medium.com/decodingml/the-llms-kit-build-a-production-ready-real-time-financial-advisor-system-using-streaming-ffdcb2b50714)
-
-### Feature pipeline
-- [Lesson 2: Why you must choose streaming over batch pipelines when doing RAG in LLM applications](https://medium.com/decoding-ml/why-you-must-choose-streaming-over-batch-pipelines-when-doing-rag-in-llm-applications-3b6fd32a93ff)
-- [Lesson 3: This is how you can build & deploy a streaming pipeline to populate a vector DB for real-time RAG](https://medium.com/decodingml/this-is-how-you-can-build-deploy-a-streaming-pipeline-to-populate-a-vector-db-for-real-time-rag-c92cfbbd4d62)
-
-### Training pipeline
-- [Lesson 4: 5 concepts that must be in your LLM fine-tuning kit](https://medium.com/decodingml/5-concepts-that-must-be-in-your-llm-fine-tuning-kit-59183c7ce60e)
-- [Lesson 5: The secret of writing generic code to fine-tune any LLM using QLoRA](https://medium.com/decodingml/the-secret-of-writing-generic-code-to-fine-tune-any-llm-using-qlora-9b1822f3c6a4)
-- [Lesson 6: From LLM development to continuous training pipelines using LLMOps](https://medium.com/decodingml/from-llm-development-to-continuous-training-pipelines-using-llmops-a3792b05061c)
-
-### Inference pipeline
-- [Lesson 7: Design a RAG LangChain application leveraging the 3-pipeline architecture](https://medium.com/decodingml/design-a-rag-langchain-application-leveraging-the-3-pipeline-architecture-46bcc3cb3500)
-- [Lesson 8: Prepare your RAG LangChain application for production](https://medium.com/decodingml/prepare-your-rag-langchain-application-for-production-5f75021cd381)
-
-
-## 5. License
-
-This course is an open-source project released under the MIT license. Thus, as long you distribute our LICENSE and acknowledge our work, you can safely clone or fork this project and use it as a source of inspiration for whatever you want (e.g., university projects, college degree projects, etc.).
-
-## 6. Contributors & Teachers
-
-<table>
-  <tr>
-    <td><img src="https://github.com/Paulescu.png" width="100" style="border-radius:50%;"/></td>
-    <td>
-      <strong>Pau Labarta Bajo | Senior ML & MLOps Engineer </strong><br />
-      <i>Main teacher. The guy from the video lessons.</i><br /><br />
-      <a href="https://www.linkedin.com/in/pau-labarta-bajo-4432074b/">LinkedIn</a><br />
-      <a href="https://twitter.com/paulabartabajo_">Twitter/X</a><br />
-      <a href="https://www.youtube.com/@realworldml">Youtube</a><br />
-      <a href="https://www.realworldml.xyz/subscribe">Real-World ML Newsletter</a><br />
-      <a href="https://www.realworldml.xyz/subscribe">Real-World ML Site</a>
-    </td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/Joywalker.png" width="100" style="border-radius:50%;"/></td>
-    <td>
-      <strong>Alexandru Razvant | Senior ML Engineer </strong><br />
-      <i>Second chef. The engineer behind the scenes.</i><br /><br />
-      <a href="https://www.linkedin.com/in/arazvant/">LinkedIn</a><br />
-      <a href="https://www.neuraleaps.com/">Neura Leaps</a>
-    </td>
-  </tr>
-  <tr>
-    <td><img src="https://github.com/iusztinpaul.png" width="100" style="border-radius:50%;"/></td>
-    <td>
-      <strong>Paul Iusztin | Senior ML & MLOps Engineer </strong><br />
-      <i>Main chef. The guys who randomly pop in the video lessons.</i><br /><br />
-      <a href="https://www.linkedin.com/in/pauliusztin/">LinkedIn</a><br />
-      <a href="https://twitter.com/iusztinpaul">Twitter/X</a><br />
-      <a href="https://pauliusztin.substack.com/">Decoding ML Newsletter</a><br />
-      <a href="https://www.pauliusztin.me/">Personal Site | ML & MLOps Hub</a>
-    </td>
-  </tr>
-</table>
+2. **Search Results Impact**
+   - Newer content naturally bubbles up to the top
+   - Older content requires higher relevance to compete with fresher content
+   - System maintains a balance between relevance and freshness
+
+## Planned Integration
+
+Due to time constraints, this system remains at the design stage, but here's how it would integrate into our pipeline:
+
+1. **Document Ingestion**
+   - Each incoming news article gets timestamped
+   - System calculates initial freshness score
+
+2. **Search Process**
+   - When someone searches, freshness scores are factored into rankings
+   - Recent, relevant content gets priority over older, slightly more relevant content
+
+3. **Continuous Updates**
+   - Scores automatically update as time passes
+   - No manual intervention needed
+
+## Benefits
+
+1. **More Relevant Results**
+   - Users see the most recent, relevant information first
+   - Reduces risk of acting on outdated information
+
+
+## Next Steps
+
+To implement this system, we would need to:
+1. Integrate the scoring system with our current RAG pipeline
+2. Set up automated testing with different time scenarios
+3. Fine-tune the decay parameters based on user feedback and data gathered adjusting weights
+4. Add monitoring for system performance
+
+## Future Enhancements
+
+While the current design focuses on time-based scoring, future versions could include:
+- Source credibility weights
+- Market hours awareness
+- Event-based importance factors such as breaking news
+- Geographic relevance adjustments
+
+## Context
+
+This system was designed as part of a technical interview task. While time constraints prevented full implementation, the design demonstrates:
+- Understanding of real-time data challenges
+- Practical approach to information relevancy
+- Scalable solution thinking
+- Balance of technical and business needs
+
+## LLM Generation Using Lang Chain
+This project utilizes LangChain's latest features for Retrieval Augmented Generation (RAG) with GPT-4o-mini, combining vector similarity search and reranking for accurate financial news analysis.
+
+# LangChain & LLM Integration Guide
+
+## Overview
+This project utilizes LangChain's latest features for Retrieval Augmented Generation (RAG) with GPT-4, combining vector similarity search and reranking for accurate financial news analysis.
+
+## Key Features
+
+### 1. Custom Prompting
+```python
+prompt = ChatPromptTemplate.from_messages([
+    ("system", """You are a financial news expert assistant.
+    Provide accurate, well-sourced answers based on the given context.
+    If information isn't in the context, clearly state that."""),
+    ("user", """Context: {context}
+    Question: {question}
+    Provide a detailed analysis.""")
+])
+```
+
+### 2. RAG Chain
+```python
+def _create_chain(self):
+    return (
+        RunnableParallel(
+            {"context": self.retriever | self._format_docs,
+             "question": RunnablePassthrough()}
+        )
+        | self.prompt
+        | self.llm
+        | StrOutputParser()
+    )
+```
+
+### 3. Answer Generation
+- Context-aware responses
+- Source attribution
+- Confidence scoring
+
+
+## Usage Examples
+
+### 1. Basic Query
+```python
+response = rag_pipeline.query(
+    "What was the latest announcement from Apple?",
+    temperature=0.2
+)
+```
+
+### 2. Analysis Query
+```python
+analysis = rag_pipeline.query(
+    "What are the implications of this FDA approval?",
+    analysis_mode=True,
+    temperature=0.5
+)
+```
+
+### 3. Filtered Search
+```python
+filtered_response = rag_pipeline.query_by_filters(
+    question="Latest developments?",
+    symbols=["AAPL"],
+    date_range="1d"
+)
+```
+
+## Best Practices to implement
+
+1. **Temperature Settings**:
+   - Use 0 for factual queries
+   - Use 0.3-0.7 for analysis
+
+2. **Context Management**:
+   - Limit context to relevant information - we can use time decay for this also
+   - Include metadata for better answers - could be feature engineering or classification
+
+3. **Error Handling**:
+   - Handle API rate limits
+   - Implement fallback options
+
+## Limitations
+
+1. **RAG Challenges**:
+   - Context relevance
+   - Information freshness
+   - Answer accuracy
+
+## Using Reranker
+
+# Cross-Encoder Reranking System Guide
+
+## Overview
+The reranking system uses a cross-encoder model to improve vector search results by reranking retrieved documents based on relevance to the query.
+
+## Implementation
+
+### 1. Reranker Architecture
+```python
+class ArticleReranker:
+    """Cross-encoder based reranking system."""
+    
+    def __init__(
+        self,
+        cross_encoder_model: CrossEncoderModelSingleton,
+        batch_size: int = 32,
+        score_threshold: float = 0.5
+    ):
+        self.cross_encoder_model = cross_encoder_model
+        self.batch_size = batch_size
+        self.score_threshold = score_threshold
+```
+
+## Integration with RAG System
+
+### 1. In Query Pipeline
+```python
+class NewsRAGSystem:
+    def query(self, question: str):
+        # First-stage retrieval
+        initial_results = self.retriever.search(question)
+        
+        # Reranking
+        if self.reranker:
+            reranked_results = self.reranker.rerank(
+                query=question,
+                articles=initial_results
+            )
+            
+            # Generate answer using reranked results
+            response = self.generate_answer(
+                question=question,
+                context=self._format_context(reranked_results)
+            )
+```
+
+### 2. With Filtering
+```python
+def query_by_filters(
+    self,
+    query: str,
+    symbols: Optional[List[str]] = None,
+    date_range: Optional[str] = None
+):
+    # Get filtered results
+    filtered_results = self.retriever.search_by_filters(
+        query=query,
+        symbols=symbols,
+        date_range=date_range
+    )
+    
+    # Apply reranking
+    if self.reranker and filtered_results:
+        filtered_results = self.reranker.rerank(
+            query=query,
+            articles=filtered_results
+        )
+    
+    return filtered_results
+```
+
+## Project Structure
+```
+RealTimeRAG/
+├── api/                     # Contains API-related code (if applicable).
+├── data/
+│   ├── documents.json       # Sample data for the knowledge base.
+├── experiments/             # Prototyping and experimental scripts.
+├── notebooks/               # Jupyter notebooks for analysis and testing.
+├── ingestion_pipeline.py    # Data ingestion logic for knowledge base updates.
+├── pipeline/
+│   ├── base.py              # Base utilities for the RAG pipeline.
+│   ├── batch.py             # Batch processing logic.
+│   ├── constants.py         # Project-wide constants.
+│   ├── embeddings.py        # Code for handling embeddings.
+│   ├── mock.py              # Mock implementation for testing.
+│   ├── mocked.py            # Additional mock logic.
+│   ├── models.py            # Machine learning models and architecture.
+│   ├── qdrant.py            # Integration with Qdrant for vector storage.
+│   ├── rag.py               # Core RAG pipeline implementation.
+│   ├── retriever.py         # Document retriever module.
+│   ├── stream.py            # Stream handling for real-time data ingestion.
+│   ├── utils.py             # Utility functions.
+├── screenshots/             # Screenshots of the application interface.
+│   ├── 1.png
+│   ├── 2.png
+│   ├── 3.png
+├── .gitignore               # Files and folders to ignore in version control.
+├── app.py                   # Main entry point for the application.
+├── dump.txt                 # Debugging logs (if applicable).
+├── Makefile                 # Commands for setup and execution.
+├── Readme.md                # Project documentation.
+├── requirements.txt         # Python dependencies.
+```
+
+## Prerequisites
+
+1. Python 3.9 or higher
+2. Virtual environment manager (venv, conda)
+3. OpenAI API key
+4. Qdrant Cloud account or local installation
+5. Alpaca API key (if using real data)
+
+## Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/dev-abuke/RealtimeRAG.git
+cd RealtimeRAG
+```
+
+2. Create and activate virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# or
+venv\Scripts\activate     # Windows
+```
+
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+4. Set up environment variables:
+```bash
+# Linux/Mac
+export OPENAI_API_KEY="your-key"
+export QDRANT_URL="your-url"
+export QDRANT_API_KEY="your-key"
+export ALPACA_API_KEY="your-key"
+
+# Windows
+set OPENAI_API_KEY=your-key
+set QDRANT_URL=your-url
+set QDRANT_API_KEY=your-key
+set ALPACA_API_KEY=your-key
+```
+
+## Components
+
+### 1. Ingestion Pipeline
+
+The Bytewax-based ingestion pipeline supports three modes:
+- Mock data (for testing)
+- Batch processing
+- Real-time streaming
+
+To run the pipeline:
+
+```bash
+# Mock data
+python -m bytewax.run ingestion_pipeline:build_mock_dataflow
+
+# Batch processing (last N days)
+python -m bytewax.run ingestion_pipeline:build_batch_dataflow
+
+# Streaming
+python -m bytewax.run ingestion_pipeline:build_stream_dataflow
+```
+
+### 2. Vector Database
+
+Using Qdrant for vector storage. Set up options:
+
+#### Local Installation
+We did not use this instalation for this project but feel free to do so
+
+```bash
+docker run -p 6333:6333 qdrant/qdrant
+```
+
+#### Cloud Service
+Use Qdrant Cloud and set the appropriate environment variables.
+
+### 3. RAG System
+
+The RAG system combines:
+- Custom embedding model
+- Cross-encoder reranking
+- LangChain integration
+- GPT-4o-mini for generation
+
+### 4. Streamlit Interface
+
+To run the web interface
+```bash
+streamlit run app.py
+```
+
+Features:
+- Real-time querying
+- Date range filtering
+- Symbol filtering
+- Source visualization
+- Response generation
+
+## Usage Examples
+
+### 1. Basic Query
+```python
+from pipeline.rag import RAGPipeline
+from pipeline.retriever import QdrantVectorDBRetriever
+
+# Initialize system
+retriever = QdrantVectorDBRetriever()
+rag = RAGPipeline(retriever=retriever)
+
+# Query
+response = rag.query("What was the latest news about AAPL?")
+print(response.answer)
+```
+
+### 2. Filtered Search
+```python
+from datetime import datetime, timedelta
+
+# Query with filters
+response = rag.query_by_filters(
+    question="Latest developments?",
+    symbols=["AAPL", "GOOGL"],
+    date_from=datetime.now() - timedelta(days=7),
+    date_to=datetime.now()
+)
+```
+
+### 3. Running Pipeline with Custom Data
+```python
+from pipeline.ingestion_pipeline import build_dataflow, IngestionTypes
+
+# Configure custom ingestion
+flow = build_batch_dataflow(
+    ingestion_type=IngestionTypes.BATCH,
+    from_datetime=datetime(2024, 1, 1),
+    to_datetime=datetime(2024, 1, 31)
+)
+```
+
+## Configuration
+
+Key configuration files and their purposes:
+
+We have used constants instead of env variable for easier tryout after cloning this repo
+
+Open Router API key is available including a free instance of Qdrant cloud currently populated with 
+
+2 days of news data from alpaca financial from November 17 2024.
+
+1. `constants.py`:
+   - Model configurations
+   - Vector DB settings
+   - Pipeline parameters
+
+   OPENAI_API_KEY=your-key
+   QDRANT_URL=your-url
+   QDRANT_API_KEY=your-key
+   ALPACA_API_KEY=your-key
+
+
+## Troubleshooting
+
+Common issues and solutions:
+
+1. Pipeline Errors:
+```bash
+export RUST_BACKTRACE=1  # Better error messages
+```
+
+2. Memory Issues:
+- Adjust batch sizes in pipeline
+- Use streaming mode for large datasets
+
+3. Vector DB Connection:
+- Check URL and API key
+- Verify collection exists
+- Check vector dimensions
+
+## Development
+
+Adding new features:
+
+1. New Data Source:
+```python
+from pipeline.sources.base import BaseInput
+
+class CustomInput(BaseInput):
+    def build(self):
+        # Implementation
+        pass
+```
+
+2. Custom Embedding Model:
+```python
+from pipeline.embeddings import BaseEmbeddingModel
+
+class CustomEmbedding(BaseEmbedding):
+    def embed(self, text):
+        # Implementation
+        pass
+```
+
+## Contributing
+
+1. Fork repository
+2. Create feature branch
+3. Submit pull request
+
+## License
+
+Apache License
+
+## Contact
+
+For questions and support:
+- GitHub Issues
+- Email: hello@abubekershamil.com
