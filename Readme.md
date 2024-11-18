@@ -378,19 +378,27 @@ venv\Scripts\activate     # Windows
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
-```bash
-# Linux/Mac
-export OPENAI_API_KEY="your-key"
-export QDRANT_URL="your-url"
-export QDRANT_API_KEY="your-key"
-export ALPACA_API_KEY="your-key"
+4. Keys and Constants used throughout the project (NEVER DO THIS - This is done soley facilitate anyone who wants to try this repo easily)
+```python
+EMBEDDING_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
+EMBEDDING_MODEL_MAX_INPUT_LENGTH = 384
+EMBEDDING_MODEL_DEVICE = "cpu"
 
-# Windows
-set OPENAI_API_KEY=your-key
-set QDRANT_URL=your-url
-set QDRANT_API_KEY=your-key
-set ALPACA_API_KEY=your-key
+CROSS_ENCODER_MODEL_ID: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+# Qdrant Cloud
+QDRANT_URL: str = "https://73bdd42b-86a7-49fc-bcf4-e6bf85cfca17.us-east4-0.gcp.cloud.qdrant.io:6333"
+QDRANT_API_KEY: str = 'pG-09pBVQTDpHkLVL3b3m_A_nEZLGYg88ew8_wFb5BtkasvGpyHOlQ'
+VECTOR_DB_OUTPUT_COLLECTION_NAME = "alpaca_financial_news"
+
+# OpenAI
+OPENAI_API_KEY: str = "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"
+LLM_MODEL_NAME: str = "gpt-4o-mini"
+LLM_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+# Alpaca News
+ALPACA_NEWS_API_KEY: str = "PKM19APHZSD7EDUI20D6"
+APACA_NEWS_SECRET: str = "GifphcRRfVCyc4VTfaTBg9z4MZT5nP3rdZVgkq0x"
 ```
 
 ## Components
@@ -507,10 +515,91 @@ Open Router API key is available including a free instance of Qdrant cloud curre
    - Vector DB settings
    - Pipeline parameters
 
-   OPENAI_API_KEY=your-key
-   QDRANT_URL=your-url
-   QDRANT_API_KEY=your-key
-   ALPACA_API_KEY=your-key
+# Project Limitations & Considerations
+
+## 1. Technical Limitations
+
+### Vector Database (Qdrant)
+- **Scale Limitations**:
+  - In-memory mode limited by available RAM (Both on Cloud and On Premise)
+  - Default collection size limits
+  - Query performance potentialy degrades with large datasets
+```python
+# Current limitation in vector storage
+QdrantVectorOutput(
+    vector_size=model.max_input_length,  # Fixed size vectors
+    client=QdrantClient(":memory:"),     # Memory-bound storage
+)
+```
+
+### Embedding Model
+- **Performance Constraints**:
+  - Single-thread processing
+  - Fixed input length
+  - CPU-only by default
+
+### Ingestion Pipeline (Bytewax)
+- **Streaming Limitations**:
+  - No built-in backpressure handling implemented
+  - Memory usage grows with stream size
+  - Limited error recovery
+
+## 2. Architectural Limitations
+
+### Scalability Issues
+- Single instance limitations
+- Limited parallel processing - currently using only main thread (async was not implemented to reduce complexity)
+
+## 3. Functional Limitations
+
+### Query Capabilities
+- Limited filtering options
+- No complex query support
+- Basic ranking only - Currently used Cross encoding which might make response time slow due to computation overhead, We could also impement Time decay here as a reranker and Others such as Bi-Encoder
+
+### Content Processing
+- Fixed chunking strategy (Only used Attention window chunking)
+- Limited metadata handling - could potentialy help in conflic handling mechanisms
+- Basic text processing using unstructured package
+
+## 4. Performance Limitations
+
+### Response Time
+- No caching used on RAG Pipeline - Could potentialy implement this promising [RAG PAPER](https://arxiv.org/abs/2404.12457)
+
+### Resource Usage
+- High memory usage during ingestion (used CPU for embedding to reduce costs)
+- CPU-intensive embedding generation
+- No resource optimization
+
+## 5. Operational Limitations
+
+### Monitoring & Observability
+- Limited monitoring capabilities
+- No metrics collection
+- Basic error tracking using loggers
+
+### Error Handling
+- Limited error recovery
+- No fallback mechanisms
+
+## 6. Deployment Limitations
+- No CI/CD Pipeline implemented
+- Automate deployment with scripts or make file
+
+## 7. Cost Considerations
+
+### API Costs
+- OpenAI API usage costs (No monitoring enable - simply used max API Cost)
+- Vector database hosting costs (Free for small usages)
+- Data ingestion costs
+
+## 8. Development Limitations
+
+### Testing
+- Limited test coverage
+- No performance testing
+- Basic integration tests
 
 
 ## Troubleshooting
@@ -530,30 +619,6 @@ export RUST_BACKTRACE=1  # Better error messages
 - Check URL and API key
 - Verify collection exists
 - Check vector dimensions
-
-## Development
-
-Adding new features:
-
-1. New Data Source:
-```python
-from pipeline.sources.base import BaseInput
-
-class CustomInput(BaseInput):
-    def build(self):
-        # Implementation
-        pass
-```
-
-2. Custom Embedding Model:
-```python
-from pipeline.embeddings import BaseEmbeddingModel
-
-class CustomEmbedding(BaseEmbedding):
-    def embed(self, text):
-        # Implementation
-        pass
-```
 
 ## Contributing
 
