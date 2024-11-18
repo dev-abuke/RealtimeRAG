@@ -459,6 +459,27 @@ Features:
 - Source visualization
 - Response generation
 
+## Build and Run Containers (Recommmeded)
+Use Docker Compose to build and run the containers:
+```bash
+   docker-compose up --build -d
+```
+
+This command will build the Docker images and start the containers in detached mode.
+### Accessing the Services
+
+Streamlit App - Once the containers are running, you can access the Streamlit app by navigating to http://localhost:8501 in your web browser.
+
+Bytewax Streaming Pipeline - The Bytewax service will run in the background. Check the logs to ensure it is running correctly:
+```bash
+  docker-compose logs bytewax 
+```
+### Stopping the Services
+To stop the running containers, use the following command:
+```bash
+docker-compose down
+```
+
 ## Usage Examples
 
 ### 1. Basic Query
