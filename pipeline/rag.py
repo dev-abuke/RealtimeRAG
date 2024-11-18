@@ -185,16 +185,18 @@ class RAGPipeline:
             retrieved_results = self.retriever.search(
                 query=question,
                 limit=limit,
-                return_all=True,
+                return_all=False,
             )
 
-            logger.info(f"Retrieved {len(retrieved_results.articles)} articles and results: {retrieved_results}")
+            logger.info(f"Retrieved {len(retrieved_results)} articles and results: {retrieved_results}")
             
             # Use appropriate prompt based on mode
             current_prompt = self.market_analysis_prompt if analysis_mode else self.qa_prompt
             
             # Generate answer
-            context = self._format_context(retrieved_results.articles)
+            context = self._format_context(retrieved_results)
+
+            logger.info(f"The Context is: {context}")
             answer = current_prompt.format(
                 context=context,
                 question=question
@@ -204,7 +206,7 @@ class RAGPipeline:
             # Prepare sources
             sources = []
             if return_sources:
-                for article in retrieved_results.articles:
+                for article in retrieved_results:
                     source = {
                         "headline": getattr(article, 'headline', 'N/A'),
                         "url": getattr(article, 'url', 'N/A'),
@@ -220,7 +222,7 @@ class RAGPipeline:
             return RAGResponse(
                 answer=answer,
                 sources=sources,
-                rerank_scores=[getattr(a, 'rerank_score', None) for a in retrieved_results.articles],
+                rerank_scores=[getattr(a, 'rerank_score', None) for a in retrieved_results],
                 query=question
             )
             
@@ -257,15 +259,17 @@ class RAGPipeline:
                     date_from=date_from,
                     date_to=date_to,
                     limit=limit,
-                    return_all=True,
-                    return_scores=True
+                    return_all=False,
+                    return_scores=False
                 )
 
-                logger.info(f"Retrieved {len(retrieved_results.articles)} articles")
+                logger.info(f"Retrieved {len(retrieved_results)} articles")
                 
                 current_prompt = self.market_analysis_prompt if analysis_mode else self.qa_prompt
                 
-                context = self._format_context(retrieved_results.articles)
+                context = self._format_context(retrieved_results)
+
+                logger.info(f"The Context is: {context}")
                 answer = current_prompt.format(
                     context=context,
                     question=question
@@ -280,12 +284,12 @@ class RAGPipeline:
                     "content": article.text,
                     "rerank_score": getattr(article, 'rerank_score', None),
                     "original_score": article.score
-                } for article in retrieved_results.articles]
+                } for article in retrieved_results]
                 
                 return RAGResponse(
                     answer=answer,
                     sources=sources,
-                    rerank_scores=[getattr(a, 'rerank_score', None) for a in retrieved_results.articles],
+                    rerank_scores=[getattr(a, 'rerank_score', None) for a in retrieved_results],
                     query=question
                 )
                 

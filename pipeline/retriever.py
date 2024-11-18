@@ -122,7 +122,7 @@ class ArticleProcessor:
         if self.cross_encoder_model:
             # TODO: Implement reranking
             articles = self.rerank(query, articles)
-            pass
+            # pass
         else:
             articles.sort(key=lambda x: x.score, reverse=True)
         
@@ -131,6 +131,7 @@ class ArticleProcessor:
     def rerank(
         self, query: str, posts: list[EmbeddedChunkedArticle]
     ) -> list[EmbeddedChunkedArticle]:
+        logger.info("Reramking using Crossencoder...")
         pairs = [[query, f"{post.text}"] for post in posts]
         cross_encoder_scores = self.cross_encoder_model(pairs)
         ranked_posts = sorted(
@@ -171,7 +172,7 @@ class VectorDBRetriever:
         limit: int = 3,
         return_all: bool = False,
         filter_conditions: Optional[models.Filter] = None
-    ) -> Union[List[EmbeddedChunkedArticle], SearchResult]:
+    ) -> List[EmbeddedChunkedArticle]:
         """
         Search for articles matching the query.
         
@@ -213,12 +214,12 @@ class VectorDBRetriever:
             limit=limit
         )
         
-        if return_all:
-            return SearchResult(
-                articles=ranked_articles,
-                query=query,
-                embedded_queries=embedded_queries
-            )
+        # if return_all:
+        #     return SearchResult(
+        #         articles=ranked_articles,
+        #         query=query,
+        #         embedded_queries=embedded_queries
+        #     )
         
         return ranked_articles
     def search_by_filters(
@@ -231,7 +232,7 @@ class VectorDBRetriever:
         return_all: bool = False,
         return_scores: bool = False,
         min_score: Optional[float] = None
-    ) -> Union[List[EmbeddedChunkedArticle], SearchResult]:
+    ) -> List[EmbeddedChunkedArticle]:
         """
         Search with filters and optional reranking.
         
@@ -296,7 +297,7 @@ class VectorDBRetriever:
             # Add scores to response if requested
             if return_scores and isinstance(results, list):
                 for article in results:
-                    article.include_scores = True
+                    pass
             
             return results
             
