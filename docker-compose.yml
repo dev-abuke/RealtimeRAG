@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    ports:
+      - "8501:8501"
+
+  bytewax:
+    build:
+      context: .
+      dockerfile: Dockerfile.bytewax
