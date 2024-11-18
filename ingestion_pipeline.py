@@ -152,6 +152,16 @@ def build_dataflow(
 
 def build_batch_dataflow(last_n_days: int = 1):
 
+    """
+    Build a Bytewax dataflow to ingest news from the last n days.
+
+    Example:
+        $ python -m bytewax.run ingestion_pipeline:build_batch_dataflow
+
+    Args:
+        last_n_days (int): Number of days to ingest news from. Defaults to 1.
+    """
+    
     to_datetime = datetime.datetime.now()
     from_datetime = to_datetime - datetime.timedelta(days=last_n_days)
 
@@ -177,4 +187,20 @@ def build_mock_dataflow():
 
 
 if __name__ == "__main__":
-    run_main(build_dataflow())
+    print("1. Build Batch Dataflow")
+    print("2. Build Stream Dataflow")
+    print("3. Build Mock Dataflow")
+
+    choice = input("Enter your choice: ")
+    if choice == "1":
+        days = int(input("Enter the number of days: "))
+        flow = build_batch_dataflow(last_n_days=days)
+    elif choice == "2":
+        flow = build_stream_dataflow()
+    elif choice == "3":
+        flow = build_mock_dataflow()
+    else:
+        print("Invalid choice. Exiting.")
+        exit(1)
+
+    run_main(flow)
