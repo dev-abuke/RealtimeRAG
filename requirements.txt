@@ -30,7 +30,7 @@ umap-learn
 ipykernel
 matplotlib
 streamlit 
-pip 
-setuptools 
-wheel
-spacy
+# pip 
+# setuptools 
+# wheel
+# spacy
