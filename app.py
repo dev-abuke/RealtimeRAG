@@ -26,27 +26,14 @@ def display_source_documents(sources: List[Dict]):
             col2, col3 = st.columns(2)
             
             with col2:
-                st.markdown("**Metadata:**")
+                st.markdown("**Date Metadata:**")
                 st.write("**Created Date:**", source['created_at'])
                 st.write("**Updated Date:**", source['updated_at'])
-                st.write("**Author:**", source['author'])
-                st.write("**Article Id:**", source['article_id'])
-                st.write("**Symbols:**", ", ".join(source['symbols']))
 
             with col3:
-                st.markdown("**Scores:**")
-                if source.get('weighted_score'):
-                    st.write("**Weighted Score:**", f"{source['weighted_score']:.3f}")
-                if source.get('harmonic_score'):
-                    st.write("**Harmonic Score:**", f"{source['harmonic_score']:.3f}")
-                if source.get('geometric_score'):
-                    st.write("**Geometric Score:**", f"{source['geometric_score']:.3f}")
-                if source.get('rerank_score'):
-                    st.write("**Cross-Encoder Score:**", f"{source['rerank_score']:.3f}")
-                if source.get('decay_score'):
-                    st.write("**Decay Score:**", f"{source['decay_score']:.3f}")
-                if source.get('original_score'):
-                    st.write("**Similarity Score:**", f"{source['original_score']:.3f}")
+                st.markdown("**Other Metadata:**")
+                st.write("**Author:**", source['author'])
+                st.write("**Symbols:**", ", ".join(source['symbols']))
             
             # Display content
             st.markdown("**Content:**")
