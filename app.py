@@ -185,6 +185,11 @@ def main():
                                     "Source": f"Source {i}: {source['headline'][:30]}...",
                                     "Score Type": "Similarity",
                                     "Score": source.get('original_score', 0)
+                                },
+                                {
+                                    "Source": f"Source {i}: {source['headline'][:30]}...",
+                                    "Score Type": "Cross-Encoder",
+                                    "Score": source.get('rerank_score', 0)
                                 }
                             ])
                         
