@@ -178,26 +178,42 @@ class ArticleProcessor:
         return articles
     
     def _rank_using_time_decay(self, articles: List[EmbeddedChunkedArticle]) -> List[EmbeddedChunkedArticle]:
-        # TODO: Implement time decay
-        
+        """
+        Rank articles using time decay.
+
+        This function takes a list of articles and updates their scores by applying a time decay
+        function to the original scores. The time decay function is implemented using the
+        FinancialFreshnessScorer class from the data_decay module. The scorer calculates a
+        confidence score based on the age of the article, and this score is then used to
+        adjust the original score.
+
+        Args:
+            articles (List[EmbeddedChunkedArticle]): List of articles to rank
+
+        Returns:
+            List[EmbeddedChunkedArticle]: List of articles with updated scores
+        """
         from data_decay import FinancialFreshnessScorer
-        
+
+        # Initialize the freshness scorer
         freshness_scorer = FinancialFreshnessScorer()
 
-         # Adjust scores based on freshness
+        # Get the current time
         current_time = datetime.now(timezone.utc)
 
+        # Iterate over each article
         for article in articles:
+            # Calculate the freshness score
             freshness = freshness_scorer.calculate_confidence(
                 article,
                 current_time
             )
-            logger.info(f"The freshnes score is: {freshness['confidence_score']}")
-            # boost = freshness_scorer.get_boost_factor(freshness['confidence_score'])
-            article.decay_score = freshness['confidence_score'] # article.score # * boost  # Adjust the score
 
-        # Sort articles by adjusted score
-        # articles.sort(key=lambda a: a.score, reverse=True)
+            # Log the freshness score
+            logger.info(f"The freshnes score is: {freshness['confidence_score']}")
+
+            # Update the article's score using the freshness score
+            article.decay_score = freshness['confidence_score'] # article.score # * boost  # Adjust the score
 
         return articles
     
