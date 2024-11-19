@@ -3,6 +3,8 @@ from typing import Dict, Optional
 from pydantic import BaseModel
 import numpy as np
 
+from pipeline.models import EmbeddedChunkedArticle
+
 class FinancialContentMetadata(BaseModel):
     content_id: str
     timestamp: datetime
@@ -20,7 +22,7 @@ class FinancialFreshnessScorer:
         self.min_score = min_score
         
     def calculate_confidence(self, 
-                           content_metadata: FinancialContentMetadata,
+                           content_metadata: EmbeddedChunkedArticle,
                            current_time: Optional[datetime] = None) -> Dict[str, float]:
         """
         Calculate confidence score based on content age using exponential decay.
@@ -29,7 +31,7 @@ class FinancialFreshnessScorer:
         current_time = current_time or datetime.utcnow()
         
         # Calculate age in hours
-        content_age = (current_time - content_metadata.timestamp).total_seconds() / 3600
+        content_age = (current_time - content_metadata.updated_at).total_seconds() / 3600
         
         # Calculate confidence score
         if content_age <= self.critical_age_hours:
@@ -45,7 +47,7 @@ class FinancialFreshnessScorer:
             confidence = max(confidence, self.min_score)
         
         return {
-            'content_id': content_metadata.content_id,
+            'content_id': content_metadata.article_id,
             'confidence_score': float(confidence),
             'age_hours': float(content_age),
             'timestamp': current_time.isoformat(),
