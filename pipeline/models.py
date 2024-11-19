@@ -1,6 +1,9 @@
 import hashlib
 from datetime import datetime
 from typing import List, Optional, Tuple, Union
+import numpy as np
+from dataclasses import dataclass
+from sklearn.preprocessing import MinMaxScaler
 
 from pydantic import BaseModel
 from unstructured.cleaners.core import (
@@ -32,6 +35,11 @@ class EmbeddedChunkedArticle(BaseModel):
     text_embedding: list
     score: Optional[float] = None
     rerank_score: Optional[float] = None
+    decay_score: Optional[float] = None
+    geometric_mean_score: Optional[float] = None
+    harmonic_mean_score: Optional[float] = None
+    weighted_avg_score: Optional[float] = None
+    fusion_score: Optional[float] = None
 
     @classmethod
     def from_retrieved_point(cls, point: Union[ScoredPoint, Record]) -> "EmbeddedChunkedArticle":
@@ -242,3 +250,147 @@ class Document(BaseModel):
             self.embeddings.append(embedding)
 
         return self
+
+@dataclass
+class ArticleScores:
+    """Container for article scores."""
+    similarity_score: float
+    cross_encoder_score: float
+    time_decay_score: float
+    
+    def __post_init__(self):
+        """Validate scores are between 0 and 1."""
+        for field, value in self.__dict__.items():
+            if not 0 <= value <= 1:
+                raise ValueError(f"{field} must be between 0 and 1")
+
+class ScoreCombiner:
+    """Combines multiple relevance scores using different strategies."""
+    
+    def __init__(
+        self,
+        similarity_weight: float = 0.15,
+        cross_encoder_weight: float = 0.35,
+        time_decay_weight: float = 0.5,
+        use_dynamic_weights: bool = False
+    ):
+        """
+        Initialize score combiner.
+        
+        Args:
+            similarity_weight: Weight for vector similarity score
+            cross_encoder_weight: Weight for cross-encoder score
+            time_decay_weight: Weight for time decay score
+            use_dynamic_weights: Whether to use dynamic weight adjustment
+        """
+        self.static_weights = {
+            'similarity': similarity_weight,
+            'cross_encoder': cross_encoder_weight,
+            'time_decay': time_decay_weight
+        }
+        self.use_dynamic_weights = use_dynamic_weights
+        self.scaler = MinMaxScaler()
+    
+    def weighted_average(self, scores: ArticleScores) -> float:
+        """Combine scores using weighted average."""
+        weights = self._get_weights(scores)
+        
+        combined_score = (
+            weights['similarity'] * scores.similarity_score +
+            weights['cross_encoder'] * scores.cross_encoder_score +
+            weights['time_decay'] * scores.time_decay_score
+        )
+        
+        return combined_score
+    
+    def _get_weights(self, scores: ArticleScores) -> dict:
+        """Get weights for score combination."""
+        if not self.use_dynamic_weights:
+            return self.static_weights
+        
+        # Dynamic weight calculation based on score distributions
+        score_variance = np.var([
+            scores.similarity_score,
+            scores.cross_encoder_score,
+            scores.time_decay_score
+        ])
+        
+        # Adjust weights based on variance
+        if score_variance < 0.1:  # Low variance, scores are similar
+            return {
+                'similarity': 0.33,
+                'cross_encoder': 0.34,
+                'time_decay': 0.33
+            }
+        else:  # High variance, favor cross-encoder
+            return {
+                'similarity': 0.25,
+                'cross_encoder': 0.5,
+                'time_decay': 0.25
+            }
+    
+    def harmonic_mean(self, scores: ArticleScores) -> float:
+        """Combine scores using weighted harmonic mean."""
+        weights = self._get_weights(scores)
+        
+        denominator = sum(
+            weight / (score + 1e-10)  # Avoid division by zero
+            for weight, score in zip(
+                weights.values(),
+                [scores.similarity_score, scores.cross_encoder_score, scores.time_decay_score]
+            )
+        )
+        
+        return sum(weights.values()) / denominator
+    
+    def geometric_mean(self, scores: ArticleScores) -> float:
+        """Combine scores using weighted geometric mean."""
+        weights = self._get_weights(scores)
+        
+        return np.prod([
+            score ** weight
+            for score, weight in zip(
+                [scores.similarity_score, scores.cross_encoder_score, scores.time_decay_score],
+                weights.values()
+            )
+        ])
+    
+    def rank_fusion(self, articles_scores: List[ArticleScores]) -> List[float]:
+        """Combine scores using rank fusion."""
+        # Get rankings for each score type
+        similarity_ranks = self._get_ranks([s.similarity_score for s in articles_scores])
+        cross_encoder_ranks = self._get_ranks([s.cross_encoder_score for s in articles_scores])
+        time_decay_ranks = self._get_ranks([s.time_decay_score for s in articles_scores])
+        
+        # Combine ranks using weights
+        weights = self.static_weights
+        combined_ranks = []
+        
+        for i in range(len(articles_scores)):
+            weighted_rank = (
+                weights['similarity'] * similarity_ranks[i] +
+                weights['cross_encoder'] * cross_encoder_ranks[i] +
+                weights['time_decay'] * time_decay_ranks[i]
+            )
+            combined_ranks.append(weighted_rank)
+        
+        # Normalize to [0,1]
+        return self._normalize_scores(combined_ranks)
+    
+    @staticmethod
+    def _get_ranks(scores: List[float]) -> List[float]:
+        """Convert scores to ranks."""
+        return [
+            sorted(scores, reverse=True).index(score) / len(scores)
+            for score in scores
+        ]
+    
+    @staticmethod
+    def _normalize_scores(scores: List[float]) -> List[float]:
+        """Normalize scores to [0,1] range."""
+        min_score = min(scores)
+        max_score = max(scores)
+        return [
+            (score - min_score) / (max_score - min_score)
+            for score in scores
+        ]
