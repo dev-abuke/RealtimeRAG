@@ -92,7 +92,7 @@ class NewsArticle(BaseModel):
     content: str
     symbols: List[str]
     source: str
-    images: Optional[List[str]] = None
+    images: Optional[List[Union[Optional[str], Optional[dict]]]] = None
 
     @staticmethod
     def clean_all(text: str) -> str:
