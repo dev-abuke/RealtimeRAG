@@ -63,7 +63,7 @@ class RAGPipeline:
             Use the provided context to answer questions accurately, short, very crisp and concise.
             Your primary objective is to provide clear and accurate responses to user queries while considering 
             the provided context. Multiple contexts are provided under separated by Context: delimiter.
-            Your answer MUST be 200 characters or less. You MUST adhere to the following guidelines: 
+            Your answer MUST be 600 characters or less. You MUST adhere to the following guidelines: 
                 1. Rely solely on the provided context or the relevant component of the conversation history 
                     to formulate your response.
                 2. If the context lacks essential details for a complete answer, kindly acknowledge it. 
@@ -236,7 +236,9 @@ class RAGPipeline:
             date_from: Optional[datetime] = None,
             date_to: Optional[datetime] = None,
             analysis_mode: bool = False,
-            limit: int = 3
+            limit: int = 3,
+            use_time_decay: bool = False,
+            scoring_method: str = "Weighted Average"
         ) -> RAGResponse:
             """
             Query with filters.
@@ -260,7 +262,9 @@ class RAGPipeline:
                     date_to=date_to,
                     limit=limit,
                     return_all=False,
-                    return_scores=False
+                    return_scores=False,
+                    use_time_decay=use_time_decay,
+                    scoring_method=scoring_method
                 )
 
                 logger.info(f"Retrieved {len(retrieved_results)} articles")
@@ -283,7 +287,13 @@ class RAGPipeline:
                     "author": getattr(article, 'author', 'N/A'),
                     "content": article.text,
                     "rerank_score": getattr(article, 'rerank_score', None),
-                    "original_score": article.score
+                    "weighted_score": getattr(article, 'weighted_avg_score', None),
+                    "harmonic_score": getattr(article, 'harmonic_mean_score', None),
+                    "geometric_score": getattr(article, 'geometric_mean_score', None),
+                    "decay_score": getattr(article, 'decay_score', None),
+                    "original_score": article.score,
+                    "updated_at": article.updated_at,
+                    "article_id": article.article_id
                 } for article in retrieved_results]
                 
                 return RAGResponse(
