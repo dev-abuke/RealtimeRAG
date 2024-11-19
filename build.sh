@@ -38,6 +38,7 @@ docker compose up --build -d
 
 if [ $? -eq 0 ]; then
   echo "Docker images built successfully."
+  docker ps
 else
   echo "Error: Failed to build Docker images."
   exit 1
