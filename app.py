@@ -23,16 +23,30 @@ def display_source_documents(sources: List[Dict]):
     for i, source in enumerate(sources, 1):
         with st.expander(f"📄 Source {i}: {source['headline']}", expanded=False):
             # Create two columns for metadata
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.write("**Date:**", source['created_at'])
-                st.write("**Author:**", source['author'])
+            col2, col3 = st.columns(2)
             
             with col2:
+                st.markdown("**Metadata:**")
+                st.write("**Created Date:**", source['created_at'])
+                st.write("**Updated Date:**", source['updated_at'])
+                st.write("**Author:**", source['author'])
+                st.write("**Article Id:**", source['article_id'])
                 st.write("**Symbols:**", ", ".join(source['symbols']))
+
+            with col3:
+                st.markdown("**Scores:**")
+                if source.get('weighted_score'):
+                    st.write("**Weighted Score:**", f"{source['weighted_score']:.3f}")
+                if source.get('harmonic_score'):
+                    st.write("**Harmonic Score:**", f"{source['harmonic_score']:.3f}")
+                if source.get('geometric_score'):
+                    st.write("**Geometric Score:**", f"{source['geometric_score']:.3f}")
                 if source.get('rerank_score'):
-                    st.write("**Relevance Score:**", f"{source['rerank_score']:.3f}")
+                    st.write("**Cross-Encoder Score:**", f"{source['rerank_score']:.3f}")
+                if source.get('decay_score'):
+                    st.write("**Decay Score:**", f"{source['decay_score']:.3f}")
+                if source.get('original_score'):
+                    st.write("**Similarity Score:**", f"{source['original_score']:.3f}")
             
             # Display content
             st.markdown("**Content:**")
@@ -97,6 +111,14 @@ def main():
         help="Provides deeper market analysis instead of simple answers"
     )
     
+    # Scoring mechanism selection
+    scoring_method = st.sidebar.radio(
+        "Select Scoring Mechanism:",
+        ["Weighted Average", "Harmonic Mean", "Geometric Mean"]
+    )
+
+    show_detailed_score =  st.sidebar.checkbox("Show detailed scores table")
+    
     # Main interface
     question = st.text_input(
         "Enter your question:",
@@ -111,6 +133,11 @@ def main():
             max_value=10,
             value=3
         )
+        use_time_decay = st.checkbox(
+            "Use Time Decay for Reranking",
+            value=True,
+            help="Enable this to apply time decay to the relevance scores."
+        )
     
     if st.button("Search", type="primary"):
         if question:
@@ -123,7 +150,9 @@ def main():
                         date_from=date_from if date_from else None,
                         date_to=date_to if date_to else None,
                         analysis_mode=analysis_mode,
-                        limit=num_sources
+                        limit=num_sources,
+                        use_time_decay=use_time_decay,
+                        scoring_method=scoring_method
                     )
                     
                     # Display answer
@@ -135,21 +164,71 @@ def main():
                     if response.sources:
                         display_source_documents(response.sources)
                         
-                        # Display relevance metrics
-                        if any(source.get('rerank_score') for source in response.sources):
-                            st.markdown("### 📊 Source Relevance")
-                            relevance_data = pd.DataFrame([
+                        # Display relevance metrics for each source
+                        st.markdown("### 📊 Source Relevance Metrics")
+                        
+                        # Prepare data for visualization
+                        all_scores_data = []
+                        import altair as alt
+                        
+                        for i, source in enumerate(response.sources, 1):
+                            # Add each score type for this source
+                            all_scores_data.extend([
                                 {
-                                    'Source': f"Source {i+1}",
-                                    'Headline': source['headline'],
-                                    'Relevance Score': source.get('rerank_score', 0)
+                                    "Source": f"Source {i}: {source['headline'][:30]}...",
+                                    "Score Type": "Weighted",
+                                    "Score": source.get('weighted_score', 0)
+                                },
+                                {
+                                    "Source": f"Source {i}: {source['headline'][:30]}...",
+                                    "Score Type": "Harmonic",
+                                    "Score": source.get('harmonic_score', 0)
+                                },
+                                {
+                                    "Source": f"Source {i}: {source['headline'][:30]}...",
+                                    "Score Type": "Geometric",
+                                    "Score": source.get('geometric_score', 0)
+                                },
+                                {
+                                    "Source": f"Source {i}: {source['headline'][:30]}...",
+                                    "Score Type": "Decay",
+                                    "Score": source.get('decay_score', 0)
+                                },
+                                {
+                                    "Source": f"Source {i}: {source['headline'][:30]}...",
+                                    "Score Type": "Similarity",
+                                    "Score": source.get('original_score', 0)
                                 }
-                                for i, source in enumerate(response.sources)
                             ])
-                            
-                            # Plot relevance scores
-                            st.bar_chart(
-                                relevance_data.set_index('Source')['Relevance Score']
+                        
+                        # Create DataFrame
+                        scores_df = pd.DataFrame(all_scores_data)
+                        
+                        # Create grouped bar chart using Altair
+                        chart = alt.Chart(scores_df).mark_bar().encode(
+                            x=alt.X('Source:N', title='Sources'),
+                            y=alt.Y('Score:Q', title='Score Value'),
+                            color=alt.Color('Score Type:N', title='Scoring Method'),
+                            xOffset='Score Type:N'  # This creates the grouping
+                        ).properties(
+                            width=800,
+                            height=400,
+                            title='Comparison of Scoring Methods Across Sources'
+                        ).configure_axis(
+                            labelAngle=-45  # Angle the labels for better readability
+                        )
+                        
+                        # Display the chart
+                        st.altair_chart(chart, use_container_width=True)
+                        
+                        # Optionally add a table view of the scores
+                        if show_detailed_score:
+                            st.dataframe(
+                                scores_df.pivot(
+                                    index='Source',
+                                    columns='Score Type',
+                                    values='Score'
+                                ).round(3)
                             )
                     else:
                         st.warning("No relevant sources found for your query.")
