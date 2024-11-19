@@ -663,6 +663,7 @@ QdrantVectorOutput(
 - Time limitation
 - implemetation od document conflicts and versioning were a bit harder but not unachievable given time
 - needed more performant computation device to run NLP for document classification and Cross encoder reranking (used cpu)
+- spacy NLP installation was failing on windows machine, and running NLP took time and resources
 
 ## Showroom of running Pipeline
 - ![alt text](screenshots/latest-1.png)
