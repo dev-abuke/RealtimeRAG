@@ -659,6 +659,11 @@ QdrantVectorOutput(
 - No performance testing
 - Basic integration tests
 
+## Challenges Encountered
+- Time limitation
+- implemetation od document conflicts and versioning were a bit harder but not unachievable given time
+- needed more performant computation device to run NLP for document classification and Cross encoder reranking (used cpu)
+
 ## Showroom of running Pipeline
 - ![alt text](screenshots/1.png)
 - ![alt text](screenshots/2.png)
