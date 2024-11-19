@@ -4,6 +4,7 @@ A real-time Retrieval Augmented Generation (RAG) system for financial news, feat
 
 ## System Architecture
 
+![alt text](https://images.production.bytewax.io/2_2_b7ed8a4c2b.png)
 ![alt text](screenshots/system.png)
 
 ```
