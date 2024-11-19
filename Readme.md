@@ -266,6 +266,32 @@ class ArticleReranker:
         self.batch_size = batch_size
         self.score_threshold = score_threshold
 ```
+# Time Decay reranker alghorithm
+
+## Purpose
+The time decay mechanism applies a decay factor to the scores based on the age of the news article. This ensures that more recent articles are prioritized over older ones.
+
+## Implementation
+A decay function is applied to the scores, reducing their value as the article's age increases.
+
+## Limitations
+- Decay Rate: Choosing the appropriate decay rate can be challenging and may require tuning based on user feedback.
+- Relevance: Older articles that are still relevant may be unfairly penalized.
+
+## Agregating Scoring Mechanisms
+The Agregating scoring mechanism is used to combine multiple scores into a single, comprehensive score that reflects the overall relevance of a news article. we implemented different agregation mechanism to find one that suits our needs
+
+1. Weighted Average
+    - Recent articles are given higher weights to ensure that the information is up-to-date.
+    - Limitations: The choice of weights can be subjective and may not reflect the true importance of each factor.
+2. Harmonic Mean
+    - The harmonic mean is calculated as the reciprocal of the arithmetic mean of the reciprocals of the scores.
+    - Limitation: The harmonic mean is highly sensitive to low scores, which can disproportionately affect the overall ranking.
+3. Geometric Mean
+    - The geometric mean is calculated by taking the nth root of the product of the scores, where n is the number of scores.
+    - Limitation: The geometric mean cannot handle zero values, which can be problematic if any score is zero and Less interpretable
+4. Rank Fusion
+    - is a method for combining scores from different sources by ranking each score type separately and then combining the ranks using weights.
 
 ## Integration with RAG System
 
@@ -351,13 +377,13 @@ RealTimeRAG/
 
 ## Prerequisites
 
-1. Python 3.9 or higher
+1. Python 3.11 or higher
 2. Virtual environment manager (venv, conda)
 3. OpenAI API key
 4. Qdrant Cloud account or local installation
 5. Alpaca API key (if using real data)
 
-## Installation
+## Local Installation
 
 1. Clone the repository:
 ```bash
@@ -459,7 +485,7 @@ Features:
 - Source visualization
 - Response generation
 
-## Build and Run Containers (Recommmeded)
+## Installation using Docker Build and Run Containers (Recommmeded)
 Use Docker Compose to build and run the containers:
 ```bash
    docker-compose up --build -d
@@ -478,6 +504,16 @@ Bytewax Streaming Pipeline - The Bytewax service will run in the background. Che
 To stop the running containers, use the following command:
 ```bash
 docker-compose down
+```
+## Or we can use a build .sh scripts for easy runs
+
+1. build.sh: A script to check for Docker Compose installation, install it if necessary, and build Docker images.
+```bash
+./build.sh
+```
+2. bytewax_batch.sh: A script to run the Bytewax batch stream for past one day.
+```bash
+./bytewax_batch.sh
 ```
 
 ## Usage Examples
