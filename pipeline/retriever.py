@@ -3,12 +3,13 @@ from typing import Optional, Union, List, Dict, Set
 from qdrant_client.http import models
 from qdrant_client import QdrantClient
 from loguru import logger
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pipeline import constants
 from pipeline.embeddings import EmbeddingModelSingleton, CrossEncoderModelSingleton
 from pipeline.models import NewsArticle, EmbeddedChunkedArticle
 from pipeline.qdrant import build_qdrant_client
+from pipeline.models import ScoreCombiner, ArticleScores
 
 @dataclass
 class SearchResult:
@@ -106,7 +107,9 @@ class ArticleProcessor:
         self,
         articles: List[EmbeddedChunkedArticle],
         query: str,
-        limit: int
+        limit: int,
+        use_time_decay: bool = False,
+        scoring_method: str = "Weighted Average"
     ) -> List[EmbeddedChunkedArticle]:
         """
         Rank articles using cross-encoder or score sorting.
@@ -125,22 +128,131 @@ class ArticleProcessor:
             # pass
         else:
             articles.sort(key=lambda x: x.score, reverse=True)
+
+        if use_time_decay: # TODO this is for debug only change to use_time_decay
+            articles = self._rank_using_time_decay(articles)
         
-        return articles[:limit]
+        articles = self._add_scores(articles)
+
+        if scoring_method == "Weighted Average":
+            articles.sort(key=lambda a: a.weighted_avg_score, reverse=True)
+        elif scoring_method == "Harmonic Mean":
+            articles.sort(key=lambda a: a.harmonic_mean_score, reverse=True)
+        elif scoring_method == "Geometric Mean":
+            articles.sort(key=lambda a: a.geometric_mean_score, reverse=True)
+        else:
+            raise ValueError(f"Unknown scoring method: {scoring_method}")
+
+        article_slice = articles[:limit]
+        
+        return article_slice
+    
+    def _add_scores(self, articles: List[EmbeddedChunkedArticle]) -> List[EmbeddedChunkedArticle]:
+        """
+        Calculate and update scores for each article using various scoring methods.
+        
+        Args:
+            articles: List of articles with initial scores.
+            
+        Returns:
+            List of articles with updated scores including weighted average,
+            harmonic mean, and geometric mean scores.
+        """
+        for article in articles:
+            
+            combiner = ScoreCombiner()
+
+            scores = ArticleScores(
+                similarity_score=article.score,
+                cross_encoder_score=article.rerank_score,
+                time_decay_score=article.decay_score
+            )
+        
+            # Try different combination methods
+            article.weighted_avg_score = combiner.weighted_average(scores)
+            article.harmonic_mean_score = combiner.harmonic_mean(scores)
+            article.geometric_mean_score = combiner.geometric_mean(scores)
+
+            logger.info(f"The reranking scores {article.weighted_avg_score} : {article.harmonic_mean_score} : {article.geometric_mean_score}: similarity score: {article.score}, rerank crossencoder score: {article.rerank_score} time decay score: {article.decay_score} Updated at: {article.updated_at} Article TEXT: {article.text}")
+        
+        return articles
+    
+    def _rank_using_time_decay(self, articles: List[EmbeddedChunkedArticle]) -> List[EmbeddedChunkedArticle]:
+        # TODO: Implement time decay
+        
+        from data_decay import FinancialFreshnessScorer
+        
+        freshness_scorer = FinancialFreshnessScorer()
+
+         # Adjust scores based on freshness
+        current_time = datetime.now(timezone.utc)
+
+        for article in articles:
+            freshness = freshness_scorer.calculate_confidence(
+                article,
+                current_time
+            )
+            logger.info(f"The freshnes score is: {freshness['confidence_score']}")
+            # boost = freshness_scorer.get_boost_factor(freshness['confidence_score'])
+            article.decay_score = freshness['confidence_score'] # article.score # * boost  # Adjust the score
+
+        # Sort articles by adjusted score
+        # articles.sort(key=lambda a: a.score, reverse=True)
+
+        return articles
     
     def rerank(
         self, query: str, posts: list[EmbeddedChunkedArticle]
     ) -> list[EmbeddedChunkedArticle]:
-        logger.info("Reramking using Crossencoder...")
+        """
+        Rerank articles using cross-encoder scores.
+
+        Args:
+            query: Original query string
+            posts: List of articles to rerank
+
+        Returns:
+            Reranked list of articles with cross-encoder scores
+        """
+        import numpy as np
+
+        logger.info("Reranking using Crossencoder...")
+
+        # Create pairs of [query, post text]
         pairs = [[query, f"{post.text}"] for post in posts]
+
+        # Compute cross-encoder scores for each pair
         cross_encoder_scores = self.cross_encoder_model(pairs)
+        # Softmax Normalization - Option 1
+
+        #     Converts scores to probabilities that sum to 1
+        #     Preserves relative differences between scores
+        #     Good when scores can be interpreted as logits (could be used if we toggle apply_softmax in crossencoder prediction)
+
+        # Min-Max Normalization - Option 2
+
+        #     Scales scores to [0,1] range linearly
+        #     Preserves relative ordering
+        #     Good for general score normalization
+
+        # Normalize scores to [0,1] range using softmax 
+        scores_array = np.array(cross_encoder_scores)
+        exp_scores = np.exp(scores_array - np.max(scores_array))  # Subtract max for numerical stability
+        normalized_scores = exp_scores / exp_scores.sum()
+        
+        # Normalize scores to [0,1] range using min-max normalization
+        # scores_array = np.array(cross_encoder_scores)
+        # normalized_scores = (scores_array - scores_array.min()) / (scores_array.max() - scores_array.min())
+
+        # Sort the posts by cross-encoder scores in descending order
         ranked_posts = sorted(
-            zip(posts, cross_encoder_scores), key=lambda x: x[1], reverse=True
+            zip(posts, normalized_scores), key=lambda x: x[1], reverse=True
         )
 
+        # Create a new list of reranked posts with cross-encoder scores
         reranked_posts = []
         for post, rerank_score in ranked_posts:
-            post.rerank_score = rerank_score
+            post.rerank_score = rerank_score  # Set the rerank score on the post
 
             reranked_posts.append(post)
 
@@ -171,7 +283,9 @@ class VectorDBRetriever:
         query: str,
         limit: int = 3,
         return_all: bool = False,
-        filter_conditions: Optional[models.Filter] = None
+        filter_conditions: Optional[models.Filter] = None,
+        use_time_decay: bool = False,
+        scoring_method: str = "Weighted Average"
     ) -> List[EmbeddedChunkedArticle]:
         """
         Search for articles matching the query.
@@ -211,7 +325,9 @@ class VectorDBRetriever:
         ranked_articles = self._article_processor.rank_articles(
             articles=list(articles),
             query=query,
-            limit=limit
+            limit=limit,
+            use_time_decay=use_time_decay,
+            scoring_method=scoring_method
         )
         
         # if return_all:
@@ -231,7 +347,9 @@ class VectorDBRetriever:
         limit: int = 3,
         return_all: bool = False,
         return_scores: bool = False,
-        min_score: Optional[float] = None
+        min_score: Optional[float] = None,
+        use_time_decay: bool = False,
+        scoring_method: str = "Weighted Average"
     ) -> List[EmbeddedChunkedArticle]:
         """
         Search with filters and optional reranking.
@@ -284,7 +402,9 @@ class VectorDBRetriever:
                 query=query,
                 limit=limit,
                 return_all=return_all,
-                filter_conditions=filter_conditions  # Pass filters to search
+                filter_conditions=filter_conditions,  # Pass filters to search
+                use_time_decay=use_time_decay,
+                scoring_method=scoring_method
             )
             
             # Apply minimum score filter if specified
