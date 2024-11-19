@@ -665,6 +665,9 @@ QdrantVectorOutput(
 - needed more performant computation device to run NLP for document classification and Cross encoder reranking (used cpu)
 
 ## Showroom of running Pipeline
+- ![alt text](screenshots/latest-1.png)
+- ![alt text](screenshots/latest-2.png)
+- ![alt text](screenshots/latest-graph.png)
 - ![alt text](screenshots/1.png)
 - ![alt text](screenshots/2.png)
 - ![alt text](screenshots/3.png)
